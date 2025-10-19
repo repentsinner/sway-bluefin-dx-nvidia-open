@@ -22,3 +22,35 @@ dnf5 install -y tmux
 #### Example for enabling a System Unit File
 
 systemctl enable podman.socket
+
+# Remove GNOME components not needed for Sway setup
+rpm-ostree override remove \
+    gnome-shell \
+    mutter \
+    gdm
+
+# Install Sway and related packages
+rpm-ostree install \
+    sway \
+    waybar \
+    swaylock \
+    swayidle \
+    wofi \
+    wlogout \
+    xdg-desktop-portal-wlr \
+    polkit-gnome \
+    foot \
+    grim \
+    slurp \
+    mako \
+    wl-clipboard \
+    cliphist \
+    pamixer \
+    brightnessctl \
+    wdisplays \
+    swww \
+    nwg-look \
+    adw-gtk3-theme \
+    xdg-desktop-portal-gtk \
+    thunar \
+    wf-recorder
