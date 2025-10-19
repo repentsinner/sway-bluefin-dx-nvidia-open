@@ -27,7 +27,29 @@ systemctl enable podman.socket
 rpm-ostree override remove \
     gnome-shell \
     mutter \
-    gdm
+    gdm \
+    gnome-initial-setup \
+    gnome-shell-extension-tailscale-gnome-qs \
+    gnome-shell-extension-search-light \
+    gnome-shell-extension-logo-menu \
+    gnome-shell-extension-gsconnect \
+    gnome-shell-extension-common \
+    gnome-shell-extension-blur-my-shell \
+    gnome-shell-extension-appindicator \
+    gnome-shell-extension-window-list \
+    nautilus-gsconnect \
+    gnome-session-wayland-session \
+    gnome-shell-extension-user-theme \
+    gnome-classic-session \
+    gnome-browser-connector \
+    gnome-shell-extension-supergfxctl-gex \
+    gnome-shell-theme-yaru \
+    gnome-shell-extension-apps-menu \
+    gnome-shell-extension-places-menu \
+    gnome-shell-extension-launch-new-instance \
+    yaru-theme \
+    gnome-shell-extension-caffeine \
+    gnome-shell-extension-dash-to-dock
 
 # Install Sway and related packages
 rpm-ostree install \
@@ -38,7 +60,7 @@ rpm-ostree install \
     wofi \
     wlogout \
     xdg-desktop-portal-wlr \
-    polkit-gnome \
+    lxpolkit \
     foot \
     grim \
     slurp \
@@ -49,8 +71,50 @@ rpm-ostree install \
     brightnessctl \
     wdisplays \
     swww \
-    nwg-look \
     adw-gtk3-theme \
     xdg-desktop-portal-gtk \
     thunar \
-    wf-recorder
+    wf-recorder \
+    greetd \
+    greetd-tuigreet
+
+# Configure greetd display manager
+mkdir -p /etc/greetd
+cp /ctx/greetd-config.toml /etc/greetd/config.toml
+systemctl enable greetd.service
+
+# Configure polkit agent to autostart with Sway
+mkdir -p /etc/sway/config.d
+cp /ctx/sway-polkit.conf /etc/sway/config.d/10-polkit.conf
+
+# Configure default GTK theme (adw-gtk3-dark) for all users
+mkdir -p /etc/skel/.config/gtk-3.0
+mkdir -p /etc/skel/.config/gtk-4.0
+
+# GTK 3 settings
+cat > /etc/skel/.config/gtk-3.0/settings.ini <<EOF
+[Settings]
+gtk-theme-name=adw-gtk3-dark
+gtk-icon-theme-name=Adwaita
+gtk-cursor-theme-name=Adwaita
+gtk-font-name=Cantarell 11
+gtk-application-prefer-dark-theme=true
+EOF
+
+# GTK 4 settings
+cat > /etc/skel/.config/gtk-4.0/settings.ini <<EOF
+[Settings]
+gtk-theme-name=adw-gtk3-dark
+gtk-icon-theme-name=Adwaita
+gtk-cursor-theme-name=Adwaita
+gtk-font-name=Cantarell 11
+gtk-application-prefer-dark-theme=true
+EOF
+
+# GTK 2 settings (legacy apps)
+cat > /etc/skel/.gtkrc-2.0 <<EOF
+gtk-theme-name="adw-gtk3-dark"
+gtk-icon-theme-name="Adwaita"
+gtk-cursor-theme-name="Adwaita"
+gtk-font-name="Cantarell 11"
+EOF

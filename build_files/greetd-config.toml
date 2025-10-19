@@ -1,0 +1,8 @@
+[terminal]
+# Run greetd on TTY1
+vt = 1
+
+[default_session]
+# Use tuigreet as the greeter with Sway as default session
+command = "tuigreet --cmd sway"
+user = "greeter"
