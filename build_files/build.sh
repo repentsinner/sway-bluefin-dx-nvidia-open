@@ -2,6 +2,13 @@
 
 set -ouex pipefail
 
+# Customize OS name for GRUB boot menu
+sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Swayfin-DX Nvidia Open"/' /usr/lib/os-release
+# Also update /etc/os-release if it exists as a regular file
+if [ -f /etc/os-release ] && [ ! -L /etc/os-release ]; then
+    sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Swayfin-DX Nvidia Open"/' /etc/os-release
+fi
+
 ### Install packages
 
 # Packages can be installed from any enabled yum repo on the image.
@@ -81,6 +88,15 @@ rpm-ostree install \
 # Configure greetd display manager
 mkdir -p /etc/greetd
 cp /ctx/greetd-config.toml /etc/greetd/config.toml
+
+# Create greeter system user for greetd
+useradd -r -m -d /var/lib/greeter -s /sbin/nologin -c "greetd greeter" greeter
+# Add greeter to necessary groups for display access
+usermod -aG video,input greeter
+# Create cache directory for tuigreet to store session preferences
+mkdir -p /var/cache/tuigreet
+chown greeter:greeter /var/cache/tuigreet
+chmod 700 /var/cache/tuigreet
 
 # Create Wayland session directory if needed
 mkdir -p /usr/share/wayland-sessions
