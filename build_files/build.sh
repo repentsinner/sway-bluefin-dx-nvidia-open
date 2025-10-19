@@ -87,6 +87,9 @@ systemctl enable greetd.service
 mkdir -p /etc/sway/config.d
 cp /ctx/sway-polkit.conf /etc/sway/config.d/10-polkit.conf
 
+# Configure input settings (keyboard and mouse)
+cp /ctx/sway-input.conf /etc/sway/config.d/20-input.conf
+
 # Configure default GTK theme (adw-gtk3-dark) for all users
 mkdir -p /etc/skel/.config/gtk-3.0
 mkdir -p /etc/skel/.config/gtk-4.0
