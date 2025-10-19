@@ -1,0 +1,77 @@
+title: Welcome to Sway Bluefin DX
+properties:
+  mode: "run-on-change"
+screens:
+  first-screen:
+    source: yafti.screen.title
+    values:
+      title: "Welcome to Sway Bluefin DX"
+      icon: "/usr/share/pixmaps/fedora-logo-sprite.svg"
+      description: |
+        This guided installer will help you get started with your new system.
+  can-we-modify-your-flatpaks:
+    source: yafti.screen.consent
+    values:
+      title: Welcome, Traveler!
+      icon: "/usr/share/pixmaps/fedora-logo-sprite.svg"
+      description: |
+        We will now install some Flatpak applications for you.
+      actions:
+        - run: /usr/bin/waydroid-launcher first-boot
+  applications:
+    source: yafti.screen.package
+    values:
+      title: Application Installer
+      show_terminal: true
+      package_manager: yafti.plugin.flatpak
+      groups:
+        Core Apps:
+          description: Essential applications for daily use
+          default: true
+          packages:
+            - Slack: com.slack.Slack
+            - Bitwarden: com.bitwarden.desktop
+        Communication:
+          description: Communication and collaboration tools
+          default: false
+          packages:
+            - Discord: com.discordapp.Discord
+            - Signal: org.signal.Signal
+            - Telegram: org.telegram.desktop
+            - Zoom: us.zoom.Zoom
+        Productivity:
+          description: Productivity and office applications
+          default: false
+          packages:
+            - LibreOffice: org.libreoffice.LibreOffice
+            - OnlyOffice: org.onlyoffice.desktopeditors
+        Browsers:
+          description: Additional web browsers
+          default: false
+          packages:
+            - Firefox: org.mozilla.firefox
+            - Brave: com.brave.Browser
+            - Chromium: org.chromium.Chromium
+        Development:
+          description: Development tools
+          default: false
+          packages:
+            - VSCode: com.visualstudio.code
+            - Postman: com.getpostman.Postman
+        Media:
+          description: Media players and editors
+          default: false
+          packages:
+            - VLC: org.videolan.VLC
+            - OBS Studio: com.obsproject.Studio
+            - Spotify: com.spotify.Client
+  final-screen:
+    source: yafti.screen.title
+    values:
+      title: "All Done!"
+      icon: "/usr/share/pixmaps/fedora-logo-sprite.svg"
+      links:
+        - "Bluefin Documentation": https://docs.projectbluefin.io
+        - "Sway Documentation": https://swaywm.org
+      description: |
+        Thanks for trying Sway Bluefin DX! Enjoy your new system!

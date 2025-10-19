@@ -81,6 +81,21 @@ rpm-ostree install \
 # Configure greetd display manager
 mkdir -p /etc/greetd
 cp /ctx/greetd-config.toml /etc/greetd/config.toml
+
+# Create Wayland session directory if needed
+mkdir -p /usr/share/wayland-sessions
+
+# Ensure sway.desktop exists for session selection
+if [ ! -f /usr/share/wayland-sessions/sway.desktop ]; then
+    cat > /usr/share/wayland-sessions/sway.desktop <<EOF
+[Desktop Entry]
+Name=Sway
+Comment=An i3-compatible Wayland compositor
+Exec=sway
+Type=Application
+EOF
+fi
+
 systemctl enable greetd.service
 
 # Configure polkit agent to autostart with Sway
@@ -121,3 +136,7 @@ gtk-icon-theme-name="Adwaita"
 gtk-cursor-theme-name="Adwaita"
 gtk-font-name="Cantarell 11"
 EOF
+
+# Configure yafti first-boot application installer
+mkdir -p /usr/share/ublue-os/firstboot
+cp /ctx/yafti.yml /usr/share/ublue-os/firstboot/yafti.yml
