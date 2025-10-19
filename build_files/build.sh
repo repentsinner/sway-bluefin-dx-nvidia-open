@@ -89,14 +89,13 @@ rpm-ostree install \
 mkdir -p /etc/greetd
 cp /ctx/greetd-config.toml /etc/greetd/config.toml
 
-# Create greeter system user for greetd
-useradd -r -m -d /var/lib/greeter -s /sbin/nologin -c "greetd greeter" greeter
-# Add greeter to necessary groups for display access
-usermod -aG video,input greeter
-# Create cache directory for tuigreet to store session preferences
-mkdir -p /var/cache/tuigreet
-chown greeter:greeter /var/cache/tuigreet
-chmod 700 /var/cache/tuigreet
+# Create greeter system user using sysusers.d (works with OSTree)
+mkdir -p /usr/lib/sysusers.d
+cp /ctx/greeter.conf /usr/lib/sysusers.d/greeter.conf
+
+# Create cache directory for tuigreet using tmpfiles.d (works with OSTree)
+mkdir -p /usr/lib/tmpfiles.d
+cp /ctx/greeter-cache.conf /usr/lib/tmpfiles.d/greeter-cache.conf
 
 # Create Wayland session directory if needed
 mkdir -p /usr/share/wayland-sessions
