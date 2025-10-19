@@ -106,7 +106,7 @@ if [ ! -f /usr/share/wayland-sessions/sway.desktop ]; then
 [Desktop Entry]
 Name=Sway
 Comment=An i3-compatible Wayland compositor
-Exec=sway
+Exec=sway --unsupported-gpu
 Type=Application
 EOF
 fi
