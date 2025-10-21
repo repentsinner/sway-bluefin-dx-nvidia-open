@@ -1,0 +1,107 @@
+{
+    "layer": "top",
+    "position": "top",
+    "height": 30,
+    "spacing": 4,
+
+    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-center": ["clock"],
+    "modules-right": ["custom/bitwarden", "custom/tailscale", "custom/wireguard", "pulseaudio", "network", "cpu", "memory", "battery", "tray", "custom/power"],
+
+    "hyprland/workspaces": {
+        "disable-scroll": false,
+        "all-outputs": true,
+        "format": "{id}",
+        "persistent-workspaces": {
+            "1": [],
+            "2": [],
+            "3": [],
+            "4": [],
+            "5": []
+        }
+    },
+
+    "hyprland/window": {
+        "format": "{}",
+        "max-length": 50
+    },
+
+    "clock": {
+        "format": "{:%H:%M  %Y-%m-%d}",
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
+    },
+
+    "custom/bitwarden": {
+        "format": "BW",
+        "tooltip-text": "Bitwarden Password Manager",
+        "on-click": "hyprctl dispatch togglespecialworkspace bitwarden"
+    },
+
+    "custom/tailscale": {
+        "exec": "~/.config/waybar/scripts/tailscale.sh",
+        "return-type": "json",
+        "interval": 10,
+        "tooltip": true,
+        "on-click": "flatpak run dev.deedles.Trayscale"
+    },
+
+    "custom/wireguard": {
+        "exec": "~/.config/waybar/scripts/wireguard.sh",
+        "return-type": "json",
+        "interval": 10,
+        "tooltip": true
+    },
+
+    "cpu": {
+        "format": " {usage}%",
+        "tooltip": false
+    },
+
+    "memory": {
+        "format": " {}%"
+    },
+
+    "battery": {
+        "states": {
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon} {capacity}%",
+        "format-charging": " {capacity}%",
+        "format-plugged": " {capacity}%",
+        "format-icons": ["", "", "", "", ""]
+    },
+
+    "network": {
+        "format-wifi": " {essid}",
+        "format-ethernet": " {ifname}",
+        "format-disconnected": "⚠ Disconnected",
+        "tooltip-format": "{ifname}: {ipaddr}/{cidr}"
+    },
+
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": " Muted",
+        "format-icons": {
+            "headphone": "",
+            "hands-free": "",
+            "headset": "",
+            "phone": "",
+            "portable": "",
+            "car": "",
+            "default": ["", "", ""]
+        },
+        "on-click": "pamixer -t"
+    },
+
+    "tray": {
+        "icon-size": 20,
+        "spacing": 10
+    },
+
+    "custom/power": {
+        "format": "⏻",
+        "tooltip-text": "Power Menu",
+        "on-click": "nwg-bar"
+    }
+}

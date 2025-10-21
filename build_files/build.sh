@@ -30,6 +30,9 @@ fi
 
 systemctl enable podman.socket
 
+# Enable VPN services
+systemctl enable tailscaled.service
+
 # Remove GNOME components not needed for Hyprland setup
 rpm-ostree override remove \
     gnome-shell \
@@ -84,7 +87,9 @@ rpm-ostree install \
     wf-recorder \
     greetd \
     greetd-tuigreet \
-    nvidia-container-toolkit
+    nvidia-container-toolkit \
+    rofimoji \
+    nwg-bar
 
 # Configure greetd display manager
 mkdir -p /etc/greetd
@@ -97,6 +102,28 @@ cp /ctx/greeter.conf /usr/lib/sysusers.d/greeter.conf
 # Create cache directory for tuigreet using tmpfiles.d (works with OSTree)
 mkdir -p /usr/lib/tmpfiles.d
 cp /ctx/greeter-cache.conf /usr/lib/tmpfiles.d/greeter-cache.conf
+
+# Configure Electron apps to use native Wayland rendering for proper fractional scaling
+mkdir -p /etc/environment.d
+cp /ctx/electron-wayland.conf /etc/environment.d/electron-wayland.conf
+
+# Configure all Flatpak apps to use Wayland for proper fractional scaling
+# This goes in /etc/skel so new users get it automatically
+mkdir -p /etc/skel/.local/share/flatpak/overrides
+cat > /etc/skel/.local/share/flatpak/overrides/global <<EOF
+[Context]
+sockets=wayland;
+
+[Environment]
+ELECTRON_ENABLE_WAYLAND=1
+ELECTRON_OZONE_PLATFORM_HINT=wayland
+EOF
+
+# Configure trayscale to access tailscale socket
+cat > /etc/skel/.local/share/flatpak/overrides/dev.deedles.Trayscale <<EOF
+[Context]
+filesystems=/run/tailscale:rw;
+EOF
 
 # Create Wayland session directory if needed
 mkdir -p /usr/share/wayland-sessions
@@ -116,174 +143,7 @@ systemctl enable greetd.service
 
 # Configure Hyprland system-wide settings
 mkdir -p /etc/hypr
-
-# Create base hyprland.conf that sources user configs
-cat > /etc/hypr/hyprland.conf <<EOF
-# Hyprland system-wide configuration
-# User configs in ~/.config/hypr/hyprland.conf will override these settings
-
-# Nvidia-specific environment variables
-env = LIBVA_DRIVER_NAME,nvidia
-env = XDG_SESSION_TYPE,wayland
-env = GBM_BACKEND,nvidia-drm
-env = __GLX_VENDOR_LIBRARY_NAME,nvidia
-env = WLR_NO_HARDWARE_CURSORS,1
-
-# Aquamarine (Hyprland's rendering backend) settings for Nvidia
-env = AQ_DRM_DEVICES,/dev/dri/card0
-
-# General environment variables
-env = XCURSOR_SIZE,24
-env = ELECTRON_OZONE_PLATFORM_HINT,wayland
-
-# Monitor configuration - HiDPI scaling
-monitor=,preferred,auto,1.25
-
-# Input configuration
-input {
-    kb_layout = us
-    kb_options = caps:ctrl_modifier
-
-    follow_mouse = 1
-
-    touchpad {
-        natural_scroll = yes
-    }
-
-    sensitivity = 0
-}
-
-# General settings
-general {
-    gaps_in = 5
-    gaps_out = 10
-    border_size = 2
-    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
-    col.inactive_border = rgba(595959aa)
-
-    layout = master
-}
-
-# Master layout configuration
-master {
-    new_status = master
-    new_on_top = true
-    mfact = 0.5
-}
-
-# Decorations
-decoration {
-    rounding = 5
-
-    blur {
-        enabled = true
-        size = 3
-        passes = 1
-    }
-
-    drop_shadow = yes
-    shadow_range = 4
-    shadow_render_power = 3
-    col.shadow = rgba(1a1a1aee)
-}
-
-# Animations
-animations {
-    enabled = yes
-
-    bezier = myBezier, 0.05, 0.9, 0.1, 1.05
-
-    animation = windows, 1, 7, myBezier
-    animation = windowsOut, 1, 7, default, popin 80%
-    animation = border, 1, 10, default
-    animation = borderangle, 1, 8, default
-    animation = fade, 1, 7, default
-    animation = workspaces, 1, 6, default
-}
-
-# Gestures
-gestures {
-    workspace_swipe = on
-}
-
-# Autostart applications
-exec-once = lxpolkit
-exec-once = mako
-exec-once = waybar
-exec-once = swww-daemon
-
-# Example keybindings (users should customize in ~/.config/hypr/hyprland.conf)
-\$mainMod = SUPER
-
-bind = \$mainMod, RETURN, exec, foot
-bind = \$mainMod, Q, killactive,
-bind = \$mainMod, M, exit,
-bind = \$mainMod, E, exec, thunar
-bind = \$mainMod, V, togglefloating,
-bind = \$mainMod, D, exec, wofi --show drun
-bind = \$mainMod, P, pseudo,
-bind = \$mainMod, J, togglesplit,
-
-# Move focus with mainMod + arrow keys
-bind = \$mainMod, left, movefocus, l
-bind = \$mainMod, right, movefocus, r
-bind = \$mainMod, up, movefocus, u
-bind = \$mainMod, down, movefocus, d
-
-# Move focus with mainMod + hjkl (vim keys)
-bind = \$mainMod, h, movefocus, l
-bind = \$mainMod, l, movefocus, r
-bind = \$mainMod, k, movefocus, u
-bind = \$mainMod, j, movefocus, d
-
-# Switch workspaces with mainMod + [0-9]
-bind = \$mainMod, 1, workspace, 1
-bind = \$mainMod, 2, workspace, 2
-bind = \$mainMod, 3, workspace, 3
-bind = \$mainMod, 4, workspace, 4
-bind = \$mainMod, 5, workspace, 5
-bind = \$mainMod, 6, workspace, 6
-bind = \$mainMod, 7, workspace, 7
-bind = \$mainMod, 8, workspace, 8
-bind = \$mainMod, 9, workspace, 9
-bind = \$mainMod, 0, workspace, 10
-
-# Move active window to a workspace with mainMod + SHIFT + [0-9]
-bind = \$mainMod SHIFT, 1, movetoworkspace, 1
-bind = \$mainMod SHIFT, 2, movetoworkspace, 2
-bind = \$mainMod SHIFT, 3, movetoworkspace, 3
-bind = \$mainMod SHIFT, 4, movetoworkspace, 4
-bind = \$mainMod SHIFT, 5, movetoworkspace, 5
-bind = \$mainMod SHIFT, 6, movetoworkspace, 6
-bind = \$mainMod SHIFT, 7, movetoworkspace, 7
-bind = \$mainMod SHIFT, 8, movetoworkspace, 8
-bind = \$mainMod SHIFT, 9, movetoworkspace, 9
-bind = \$mainMod SHIFT, 0, movetoworkspace, 10
-
-# Scroll through existing workspaces with mainMod + scroll
-bind = \$mainMod, mouse_down, workspace, e+1
-bind = \$mainMod, mouse_up, workspace, e-1
-
-# Move/resize windows with mainMod + LMB/RMB and dragging
-bindm = \$mainMod, mouse:272, movewindow
-bindm = \$mainMod, mouse:273, resizewindow
-
-# Screenshot bindings
-bind = , PRINT, exec, grim -g "\$(slurp)" - | wl-copy
-bind = SHIFT, PRINT, exec, grim - | wl-copy
-
-# Volume controls
-bind = , XF86AudioRaiseVolume, exec, pamixer -i 5
-bind = , XF86AudioLowerVolume, exec, pamixer -d 5
-bind = , XF86AudioMute, exec, pamixer -t
-
-# Brightness controls
-bind = , XF86MonBrightnessUp, exec, brightnessctl set +5%
-bind = , XF86MonBrightnessDown, exec, brightnessctl set 5%-
-
-# Source user configuration (if it exists)
-source = ~/.config/hypr/hyprland.conf
-EOF
+cp /ctx/hyprland.conf /etc/hypr/hyprland.conf
 
 # Configure default GTK theme (adw-gtk3-dark) for all users
 mkdir -p /etc/skel/.config/gtk-3.0
@@ -316,6 +176,17 @@ gtk-icon-theme-name="Adwaita"
 gtk-cursor-theme-name="Adwaita"
 gtk-font-name="Cantarell 11"
 EOF
+
+# Pre-populate Hyprland config for new users (prevents autogenerated defaults from overriding system config)
+mkdir -p /etc/skel/.config/hypr
+cp /ctx/hyprland.conf /etc/skel/.config/hypr/hyprland.conf
+cp /ctx/hyprlock.conf /etc/skel/.config/hypr/hyprlock.conf
+cp /ctx/hypridle.conf /etc/skel/.config/hypr/hypridle.conf
+
+# Configure waybar with system tray
+mkdir -p /etc/skel/.config/waybar
+cp /ctx/waybar-config.json /etc/skel/.config/waybar/config
+cp /ctx/waybar-style.css /etc/skel/.config/waybar/style.css
 
 # Configure yafti first-boot application installer
 mkdir -p /usr/share/ublue-os/firstboot

@@ -1,11 +1,11 @@
-title: Welcome to Sway Bluefin DX
+title: Welcome to Hyprland Bluefin DX
 properties:
   mode: "run-on-change"
 screens:
   first-screen:
     source: yafti.screen.title
     values:
-      title: "Welcome to Sway Bluefin DX"
+      title: "Welcome to Hyprland Bluefin DX"
       icon: "/usr/share/pixmaps/fedora-logo-sprite.svg"
       description: |
         This guided installer will help you get started with your new system.
@@ -74,4 +74,4 @@ screens:
         - "Bluefin Documentation": https://docs.projectbluefin.io
         - "Sway Documentation": https://swaywm.org
       description: |
-        Thanks for trying Sway Bluefin DX! Enjoy your new system!
+        Thanks for trying Hyprland Bluefin DX! Enjoy your new system!

@@ -103,6 +103,32 @@ sudo bootc switch ghcr.io/<username>/hyprland-bluefin-dx-nvidia-open
 sudo reboot
 ```
 
+## Post-Installation Setup
+
+### Tailscale VPN (Optional)
+
+Tailscale is pre-installed and enabled. To set up the GUI:
+
+1. **Set your user as operator** (allows GUI control without sudo):
+   ```bash
+   sudo tailscale set --operator=$USER
+   ```
+
+2. **Install trayscale GUI** (already configured to auto-start):
+   ```bash
+   flatpak install flathub dev.deedles.Trayscale
+   ```
+
+The trayscale icon will appear in your system tray for easy VPN management.
+
+### WireGuard VPN
+
+WireGuard tools are pre-installed. Configure VPN connections via NetworkManager:
+- Use `nmcli` for CLI configuration
+- Or install `nm-connection-editor` for GUI setup
+
+WireGuard status is shown in the waybar status bar.
+
 ## Configuration
 
 After installation, users can customize Hyprland by creating `~/.config/hypr/hyprland.conf`. This file will be sourced by the system configuration and can override any settings.
