@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.12](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.11...v0.4.12) (2026-06-09)
+
+
+### Features
+
+* **suspend:** time-gated auto-suspend in development mode (S26) ([#59](https://github.com/repentsinner/tilefin-nvidia-open/issues/59)) ([1e5478c](https://github.com/repentsinner/tilefin-nvidia-open/commit/1e5478c3d56a5c2fdf9f80b2c56a19fb6ee63f3e))
+
 ## [0.4.11](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.10...v0.4.11) (2026-05-08)
 
 
