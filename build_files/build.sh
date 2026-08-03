@@ -395,6 +395,13 @@ cat > /etc/modprobe.d/nvidia-rebar.conf <<'EOF'
 options nvidia NVreg_EnableResizableBar=1
 EOF
 
+# Allow non-root users to access GPU performance counters — required for
+# profiling tools (Nsight Compute/Systems, CUPTI). Without this they fail
+# with ERR_NVGPUCTRPERM.
+cat > /etc/modprobe.d/nvidia-profiling.conf <<'EOF'
+options nvidia NVreg_RestrictProfilingToAdminUsers=0
+EOF
+
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
