@@ -1236,8 +1236,312 @@ login keyring with the login password at session start. gh secure
 storage and `secret-tool` resolve to this keyring; gh no longer writes
 its token to plaintext `hosts.yml`.
 
+### S29: GPUDirect Storage
+
+*Status: complete — verified 2026-08-03*
+
+#### Problem
+
+A consuming project on this host needs NVIDIA GPUDirect Storage — the
+`cuFile` API reading NVMe data directly into GPU memory, with no bounce
+buffer through host RAM. GDS does not work on the image as shipped:
+`cuFileDriverOpen` fails with `DRIVER_NOT_INITIALIZED (5001)`.
+
+The image carries five NVIDIA modules from ublue's `kmod-nvidia`:
+`nvidia`, `nvidia-drm`, `nvidia-modeset`, `nvidia-uvm`, and
+`nvidia-peermem`. The last is GPUDirect RDMA for the network path
+(S20), not storage. There is no `nvidia-fs`.
+
+#### Design
+
+libcufile has three modes. `compat` bounces through host memory and
+defeats the purpose; the other two are real DMA paths:
+
+| Mode | Kernel module | Storage |
+|---|---|---|
+| `nvfs` | `nvidia-fs.ko` | all VFS filesystems, distributed FS, NFS over RDMA |
+| `p2pdma` | none | ext4/XFS on NVMe; no RAID0 or multipath |
+
+The split is by storage type, not by preference: `p2pdma` covers NVMe
+block devices and nothing else, so any distributed filesystem is
+`nvfs`-only and out of reach here (see Deferred, below).
+
+This image uses `p2pdma`. As of CUDA 12.8 it drives GDS through the
+upstream NVMe driver and the kernel's PCI P2PDMA layer; NVIDIA states it
+"eliminate[s] the need for custom MOFED NVMe patches and nvidia-fs.ko to
+support GDS with Ext4 and XFS with NVMe drives."
+
+Every prerequisite is already met — kernel 7.1.5 (≥ 6.2),
+`CONFIG_PCI_P2PDMA=y`, open driver 610.43.03 (≥ 570), CUDA 13.2
+userspace, plain NVMe with no RAID0 or multipath. Only a driver registry
+key is missing (R29.1). Kernel and driver versions track the base image
+and move with it; the constraints are the floors, not these exact
+builds.
+
+Scope is the host enabling config alone. GDS userspace — `libcufile`,
+`gdscheck` — is a CUDA toolkit component belonging to the consuming
+project (see Out of scope), matching the S28 split between image-side
+enabling config and userspace tooling.
+
+That split leaves one obligation on the consumer: libcufile ships
+`"use_pci_p2pdma": false`, so p2pdma is off by default and must be
+enabled in `cufile.json` (system-wide at `/etc/cufile.json`, or per
+process via `CUFILE_ENV_PATH_JSON`). Neither the image nor the CUDA
+packages create that file. A consumer that skips this gets `compat`
+— a working cuFile API backed by a CPU bounce buffer — with no error to
+distinguish it from a hardware or driver limitation.
+
+##### PCIe topology
+
+The GPU and the NVMe drives sit on different root complexes: the GPU at
+`0000:41:00.0` under host bridge `0000:40`, both NVMe controllers under
+`0000:20` (`0000:21:00.0` boot, `0000:22:00.0` the XFS data volume).
+They share no upstream bridge, so the kernel classifies the transfer as
+`PCI_P2PDMA_MAP_THRU_HOST_BRIDGE`.
+
+That is supported here rather than rejected. `calc_map_type_and_dist()`
+in `drivers/pci/p2pdma.c` disqualifies such a pair only when
+`!cpu_supports_p2pdma() && !host_bridge_whitelist(...)`, and
+`cpu_supports_p2pdma()` returns true for "any AMD CPU whose family ID is
+Zen or newer" — this machine is a Threadripper PRO 3975WX, family 0x17.
+The Intel-only device whitelist is never consulted. PCIe ACS redirect
+likewise does not disqualify the path: it only downgrades the
+shared-bridge `PCI_P2PDMA_MAP_BUS_ADDR` fast path, which a
+cross-root-complex pair never takes.
+
+Traffic therefore crosses the root complex by design, which bounds
+achievable bandwidth below what a shared-switch topology would give.
+That is a performance ceiling, not a functional blocker.
+
+#### Deferred: building nvidia-fs.ko
+
+Compiling nvidia-fs into the image was prototyped and deferred, not
+ruled out — see "Network filesystems will require it" below. It is
+buildable — the module needs one driver header (`nv-p2p.h`, public
+because the image runs the *open* driver), symbol CRCs read from the
+shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
+— but:
+
+- The `nvfs` path wants NVMe driver patches from DOCA's
+  `mlnx-nvme-dkms`. DOCA on Fedora is the same blocker that stalls S20,
+  so the module alone may not deliver a working DMA path.
+- It commits the image to rebuilding an out-of-tree module against every
+  kernel bump, pinned to an nvidia-fs release that supports that kernel.
+- The result is unsigned. ublue signs its akmods with a key this repo
+  does not hold, so the module loads only with Secure Boot disabled.
+
+`p2pdma` avoids all three, and covers the local-NVMe workload this
+section was raised for.
+
+##### Network filesystems will require it
+
+`p2pdma` is restricted to NVMe block devices. NVIDIA scopes the
+exemption explicitly: nvidia-fs.ko "is not necessary for the case of
+mounts of NVMe (local or with NVIDIA DOCA SNAP) for cuFile in CUDA
+version 12.8 and higher" — NVMe only, nothing else.
+
+GDS against a distributed filesystem — Lustre, WekaFS, EXAScaler, GPFS,
+or NFS over RDMA — therefore still needs the `nvfs` path and
+`nvidia-fs.ko`. Nothing in S29 delivers that, and no configuration of
+what S29 does deliver reaches it. When such a workload arrives this
+section reopens with the three costs above intact, plus probably a
+fourth: RDMA-backed distributed clients are likely to want the same
+DOCA/MOFED stack that blocks S20, which would couple the two. That
+coupling is inferred from the shared DOCA dependency rather than
+verified, and should be checked before it is planned around.
+
+#### R29.1: Static BAR1 for PCI P2PDMA
+
+The kernel's P2PDMA allocator hands NVMe the GPU's BAR1 addresses
+directly, which requires the framebuffer to be statically mapped into
+BAR1 rather than mapped through a sliding window.
+`/usr/lib/bootc/kargs.d/40-nvidia-params.toml` sets
+`nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2` (R29.3 explains why
+this is a kernel arg rather than a `modprobe.d` option).
+
+The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
+"will only map static BAR1 if static BAR1 size is calculated to be big
+enough to map all of FB once plus a calculated amount for other expected
+BAR1 mappings", whereas ENABLE "does not take into account other
+expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
+other mappings are GPUDirect RDMA's (S20), which this image intends to
+keep working.
+
+Static BAR1 does not conflict with resizable BAR; it requires a BAR1
+large enough to map the whole framebuffer. What supplies that size is
+the firmware, not the driver: on the target hardware BAR1 is 65536 MiB
+against 49140 MiB of framebuffer — leaving ~16 GiB for other mappings —
+while `NVreg_EnableResizableBar` read back as `0`, because the option
+was set in `modprobe.d` and never applied (R29.3). UEFI "Above 4G
+Decoding" and "Resizable BAR" are therefore the real prerequisites. The
+driver-side opt-in is set as a karg alongside the dword to make the
+request explicit rather than incidental.
+
+`RmForceDisableIomapWC=1` is set alongside it, and is not optional
+despite NVIDIA documenting it as a workaround "for chipsets where
+write-combine is broken". The driver gates P2PDMA registration on both
+conditions — `uvm_devmem.c` returns early on
+`!static_bar1_size || static_bar1_write_combined` before it ever calls
+`pci_p2pdma_add_resource()` — so a write-combined static BAR1 registers
+no `p2pmem` pool and cuFile silently falls back to `compat`. The cost is
+that BAR1 is mapped uncached rather than write-combined, slowing
+CPU-side writes through the aperture; GPU and NVMe DMA are unaffected.
+
+The two keys go in one `NVreg_RegistryDwords` value separated by `;`,
+which rules out delivering it as a kernel arg. GRUB parses `;` as a
+statement separator and truncates the kernel line there, and quoting
+does not rescue it because bootc normalises the quotes away when writing
+the BLS entry — observed twice, with the entry holding both pairs while
+`/proc/cmdline` and `/proc/driver/nvidia/params` showed only
+`RMForceStaticBar1=2`. The driver hardcodes the separator
+(`rm_string_token(&ptr, ';')` in `osapi.c`), so there is no alternative
+to fall back on.
+
+This one parameter therefore ships in
+`/usr/lib/modprobe.d/nvidia-tilefin.conf`, which puts no bootloader in
+the path, and the image regenerates its initramfs so the file is
+actually read (R29.3). The `;`-free parameters stay as kargs, so a
+dracut failure cannot regress settings that already work.
+
+The observable signal that both gates passed is
+`/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
+the driver never registered the pool and no userspace configuration will
+produce a DMA path. Check `/proc/driver/nvidia/params` alongside it —
+a truncated `RegistryDwords` means the parameter never arrived, which is
+a different failure from the driver declining to register.
+
+#### R29.2: IOMMU mode
+
+GDS peer-to-peer DMA requires the NVMe device to reach the GPU's BAR.
+Under a *translating* IOMMU that path is unreliable, which is the basis
+for NVIDIA's `iommu=off` guidance — a functional constraint, not a
+throughput one. Modern IOMMUs are close to free: `iommu=pt` runs an
+identity-mapped domain for host-driven devices, and Linux defaults to
+lazy IOTLB invalidation for those that are translated.
+
+The image already sets `iommu=pt` (S19), and `gdscheck -p` reports the
+GPU as "supports GDS" under it. That is the starting position, not a
+proven one: the same output warns "GDS is not guaranteed to work
+functionally or in a performant way with iommu=on/pt", and NVIDIA's tool
+does not distinguish `pt` from `on` there. Whether `pt` suffices in
+practice is an open question below.
+
+Rebasing onto a current image is not sufficient to get `iommu=pt` on a
+machine that once had it removed. `kargs.d` is applied as a diff against
+the previous image, and a local deletion outranks it: this machine boots
+`intel_iommu=on amd_iommu=on` from `10-iommu.toml` while `iommu=pt` from
+the same file is absent, because it was deleted locally when the AJA
+Corvid44 needed the SWIOTLB bounce path (S19). Restoring it takes a
+one-time `rpm-ostree kargs --append=iommu=pt`; no image change will do
+it.
+
+#### R29.3: NVIDIA module parameters are kernel args
+
+Module options this image adds under `/etc/modprobe.d/` never reach the
+NVIDIA driver. `nvidia.ko` loads from the initramfs, seconds before
+`initrd-switch-root`, and that initramfs is generated in the ublue base
+image — so it captures the base's `/usr/lib/modprobe.d` and nothing
+`build.sh` writes afterwards.
+
+The evidence is a clean split in `/proc/driver/nvidia/params`: options
+from the base image's `/usr/lib/modprobe.d/nvidia.conf`
+(`PreserveVideoMemoryAllocations`, `UseKernelSuspendNotifiers`,
+`TemporaryFilePath`) all apply, while every option this image added under
+`/etc/modprobe.d/` reads back as its default.
+
+Two deliveries are therefore in play. Parameters whose values contain no
+`;` ship as kargs in `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`,
+matching the existing `nvidia-drm.modeset=1`; kernel command line
+parameters bind at module load regardless of where the module came from.
+`NVreg_RegistryDwords` cannot use that route (R29.1), so the image
+regenerates its initramfs — invocation mirroring
+`ublue-os/main build_files/initramfs.sh` — and ships that parameter in
+`/usr/lib/modprobe.d/nvidia-tilefin.conf`.
+
+The build asserts the result with
+`lsinitrd … | grep -q nvidia-tilefin.conf`. Every delivery failure in
+this section's history was invisible until a reboot; this one fails the
+build instead.
+
+This subsumes the profiling option added for Nsight/CUPTI, which was
+inert for the same reason — `RmProfilingAdminOnly` read back as `1`
+despite `NVreg_RestrictProfilingToAdminUsers=0` in `/etc/modprobe.d/`.
+
+Anything added to `/etc/modprobe.d/` for a module the initramfs loads is
+silently ineffective. Check `/proc/driver/nvidia/params`, not the file.
+
+#### Verification
+
+Confirmed working on 2026-08-03, kernel 7.1.5-101, driver 610.43.03.
+
+The driver registered BAR1 with the kernel P2PDMA layer —
+`/sys/bus/pci/devices/0000:41:00.0/p2pmem/` exists, which can only
+happen past both gates in `uvm_devmem.c`, so AUTO did engage static
+BAR1 and write-combine is off. `/proc/driver/nvidia/params` reads
+`RegistryDwords: "RMForceStaticBar1=2;RmForceDisableIomapWC=1"`,
+`EnableResizableBar: 1`, `RmProfilingAdminOnly: 0`.
+
+End-to-end transfers with `allow_compat_mode: false`, so a fallback
+would error rather than report success:
+
+| Test (8 GiB, 4 MiB IO, 8 threads, XFS on NVMe) | Result |
+|---|---|
+| `gdsio -x 0 -I 0` (read) | `XferType: GPUD` 3.266 GiB/s |
+| `gdsio -x 0 -I 1` (write) | `XferType: GPUD` 3.005 GiB/s |
+| `gdsio -x 1 -I 0` (CPU control) | `XferType: CPUONLY` 3.269 GiB/s |
+
+##### Do not use gdscheck as the acceptance test
+
+`gdscheck -p` reports `NVMe : compat` on a working configuration. Its
+storage rows describe the `nvidia-fs` path, which this image
+deliberately does not have. A reviewer following it would conclude the
+feature failed. The signals that mean something are the `p2pmem/`
+directory and `gdsio` reporting `XferType: GPUD`.
+
+`gdscheck` remains useful for the GPU and platform rows, and its
+`iommu=on/pt` warning is worth reading — but that warning did not
+predict failure here.
+
+##### The storage device is the bottleneck, not the topology
+
+GPUD and CPU paths measure the same because the drive is saturated,
+not because P2PDMA is inactive. The XFS volume sits on
+`0000:22:00.0`, a Samsung PM981-class part whose link maxes at
+Gen3 x4 (8 GT/s) ≈ 3.5 GB/s; measured throughput is at that ceiling.
+The Gen4 980 PRO on `0000:21:00.0` is the boot drive and carries
+btrfs, which GDS cannot use.
+
+The value of GDS here is therefore not peak throughput but that the
+bytes never traverse host RAM or CPU cores. Raising the ceiling means a
+Gen4/Gen5 part on the data volume — not RAID0, which NVIDIA does not
+support with p2pdma, and not slot changes.
+
+#### Resolved questions
+
+- **Is `iommu=pt` enough?** Yes. Verified working with
+  `intel_iommu=on amd_iommu=on iommu=pt` and KASLR active. NVIDIA's
+  `iommu=on/pt` warning and the KASLR known-issue both proved
+  non-blocking on this platform, so neither `iommu=off` nor `nokaslr`
+  is needed — and the S9 passthrough capability is retained.
+- **Filesystem coverage.** Unchanged and still a real constraint: GDS
+  applies only to the XFS volume. The btrfs root qualifies for neither
+  `p2pdma` nor `nvfs`.
+- **Same-root-complex co-location.** Not worth pursuing. `0000:40` has
+  exactly two root ports wired to slots — the GPU and the ConnectX-6 —
+  with `07.1`/`08.1` leading to AMD internal functions, so co-locating
+  an NVMe means displacing the NIC and the GPUDirect RDMA co-location
+  S20 wants. It would not change the mapping class either:
+  `PCI_P2PDMA_MAP_BUS_ADDR` needs a common upstream bridge, i.e. a PCIe
+  switch, and separate root ports under one host bridge still yield
+  `THRU_HOST_BRIDGE`. Bifurcation creates root ports, not a switch.
+  NUMA is moot — single node, `numa_node=-1` on every device.
+
 ## Out of scope
 
+- **GDS userspace**: `libcufile`, `libcufile_rdma`, and `gdscheck` are
+  CUDA toolkit components. They install with CUDA in the consuming
+  environment (pip wheel or userbox); the image provides only the
+  kernel module (S29).
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
   provides system-wide defaults via `/etc/skel/`, `/etc/xdg/`, and
   `/etc/profile.d/`. Users override in `~/.config/`.

@@ -103,3 +103,17 @@ Completed work is removed — see CHANGELOG.md for history.
   idle dim/lock/display-off still fire; nwg-bar Sleep and `Mod+Shift+L`
   suspend on demand at any time. Enable production mode and confirm the
   idle listener no longer suspends.
+
+## GPUDirect Storage over network filesystems (S29)
+
+- **nvfs-network-fs**: Build and ship `nvidia-fs.ko` so the `nvfs` path
+  is available for distributed filesystems — Lustre, WekaFS, EXAScaler,
+  GPFS, NFS over RDMA. The delivered S29 configuration cannot reach
+  them: `p2pdma` covers NVMe block devices only, and NVIDIA scopes the
+  no-module exemption to "mounts of NVMe (local or with NVIDIA DOCA
+  SNAP)". No amount of tuning the shipped setup substitutes.
+  Blocked — no such workload yet. The build recipe (one driver header,
+  symbol CRCs from the shipped `nvidia.ko`, `kernel-devel` from
+  `updates-archive`) and the three standing costs are recorded in
+  S29 → Deferred. Likely coupled to the DOCA-on-Fedora blocker that
+  gates S20; verify that before planning around it.

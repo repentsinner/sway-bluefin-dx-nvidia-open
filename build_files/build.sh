@@ -387,21 +387,6 @@ cat > /etc/systemd/user.conf.d/memlock.conf <<'EOF'
 DefaultLimitMEMLOCK=infinity
 EOF
 
-# Enable Resizable BAR — lets the NVIDIA driver map full VRAM over PCIe
-# instead of a 256 MiB sliding window. Required for efficient GPUDirect RDMA.
-# UEFI must also have "Above 4G Decoding" and "Resizable BAR" enabled.
-mkdir -p /etc/modprobe.d
-cat > /etc/modprobe.d/nvidia-rebar.conf <<'EOF'
-options nvidia NVreg_EnableResizableBar=1
-EOF
-
-# Allow non-root users to access GPU performance counters — required for
-# profiling tools (Nsight Compute/Systems, CUPTI). Without this they fail
-# with ERR_NVGPUCTRPERM.
-cat > /etc/modprobe.d/nvidia-profiling.conf <<'EOF'
-options nvidia NVreg_RestrictProfilingToAdminUsers=0
-EOF
-
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
@@ -427,6 +412,82 @@ cat > /usr/lib/bootc/kargs.d/30-nvidia-drm.toml <<'EOF'
 kargs = ["nvidia-drm.modeset=1"]
 EOF
 
+# NVIDIA module parameters — kernel args, deliberately not modprobe.d.
+#
+# nvidia.ko loads from the initramfs, seconds before switch-root. That
+# initramfs is generated in the ublue base image, so it captures the base's
+# /usr/lib/modprobe.d and nothing this script writes afterwards: options
+# placed in /etc/modprobe.d read back as their defaults on the running
+# system (verify with /proc/driver/nvidia/params). Kernel command line
+# parameters bind at module load regardless of when the module is loaded,
+# which is why nvidia-drm.modeset above is a karg too. Regenerating the
+# initramfs in this layer would also work, but kargs are cheaper and are
+# already the established pattern here.
+#
+# NVreg_EnableResizableBar: driver-side opt-in to size BAR1 to full VRAM.
+#   UEFI must also have "Above 4G Decoding" and "Resizable BAR" enabled.
+#   Where firmware already sizes BAR1 to full VRAM this changes nothing;
+#   it makes the driver's own request explicit rather than relying on it.
+#
+# RMForceStaticBar1=2: maps the whole framebuffer into BAR1 up front, so
+#   the kernel's PCI P2PDMA allocator can hand NVMe the GPU's BAR1
+#   addresses for cuFile transfers (S29). 2 is AUTO, which reserves BAR1
+#   for other expected mappings — GPUDirect RDMA's among them (S20). 1
+#   (ENABLE) ignores those and risks BAR1 exhaustion. Static BAR1 engages
+#   only when BAR1 can map all of VRAM once; at AUTO it declines rather
+#   than failing driver init.
+#
+# RmForceDisableIomapWC=1: both halves of the driver's gate on registering
+#   BAR1 with the kernel P2PDMA layer. uvm_devmem.c bails out on
+#   "!static_bar1_size || static_bar1_write_combined" before ever calling
+#   pci_p2pdma_add_resource(), so a write-combined static BAR1 silently
+#   yields no p2pmem pool and cuFile falls back to compat. NVIDIA
+#   documents this key as a workaround for broken write-combine, but the
+#   driver source makes it a P2PDMA prerequisite. Cost: BAR1 is mapped
+#   uncached rather than write-combined, which slows CPU-side writes
+#   through the aperture.
+#
+#   RegistryDwords takes key=value pairs separated by ';', and the value
+#   MUST be quoted. The kernel is fine with ';' — it splits module params
+#   on the first '=' and treats the rest as opaque — but GRUB parses ';'
+#   as a statement separator and silently truncates the kernel line
+#   there. Unquoted, the BLS entry carries both pairs while /proc/cmdline
+#   shows only the first, and the driver applies only RMForceStaticBar1.
+#   Quoting survives either GRUB behaviour: if GRUB strips the quotes the
+#   kernel gets the bare value, and if it passes them through the kernel's
+#   next_arg() strips them from the value itself.
+#   The driver hardcodes ';' (rm_string_token(&ptr, ';') in osapi.c), so
+#   there is no alternative separator to fall back on.
+#
+# NVreg_RestrictProfilingToAdminUsers=0: non-root access to GPU
+#   performance counters for Nsight Compute/Systems and CUPTI, which
+#   otherwise fail with ERR_NVGPUCTRPERM. Confirm with
+#   RmProfilingAdminOnly in /proc/driver/nvidia/params.
+cat > /usr/lib/bootc/kargs.d/40-nvidia-params.toml <<'EOF'
+kargs = [
+  "nvidia.NVreg_EnableResizableBar=1",
+  "nvidia.NVreg_RestrictProfilingToAdminUsers=0"
+]
+EOF
+
+# NVreg_RegistryDwords cannot travel as a kernel arg: its pairs are
+# ';'-separated, GRUB parses ';' as a statement separator and truncates the
+# kernel line there, and quoting does not help because bootc normalises the
+# quotes away when writing the BLS entry. Observed twice — the BLS entry held
+# both pairs while /proc/cmdline and /proc/driver/nvidia/params showed only
+# RMForceStaticBar1=2.
+#
+# modprobe.d has no bootloader in the path and handles the quoted value
+# natively. It only works if the file is in the initramfs, since nvidia.ko
+# loads there (see the note above), which is why this layer regenerates the
+# initramfs below. Kept separate from the kargs above so that a dracut
+# failure cannot regress parameters that already work.
+cat > /usr/lib/modprobe.d/nvidia-tilefin.conf <<'EOF'
+# GPUDirect Storage (S29): static BAR1, not write-combined, so the driver
+# registers BAR1 with the kernel PCI P2PDMA layer.
+options nvidia NVreg_RegistryDwords="RMForceStaticBar1=2;RmForceDisableIomapWC=1"
+EOF
+
 ###############################################################################
 # Install Custom Justfile (ujust recipes)
 ###############################################################################
@@ -435,5 +496,32 @@ echo "Installing custom ujust recipes..."
 cp /ctx/60-custom.just /usr/share/ublue-os/just/60-custom.just
 cp /ctx/tilefin.just /usr/share/ublue-os/just/61-tilefin.just
 cp /ctx/bmd.just /usr/share/ublue-os/just/62-bmd.just
+
+###############################################################################
+# Regenerate Initramfs
+###############################################################################
+
+# The base image's initramfs predates this layer, so it carries the base's
+# /usr/lib/modprobe.d and none of the files written above. nvidia.ko loads
+# from the initramfs, seconds before switch-root, so without this step
+# nvidia-tilefin.conf is silently ignored (S29 R29.3).
+#
+# Invocation mirrors ublue-os/main build_files/initramfs.sh so the result
+# matches what the base image would have produced.
+echo "Regenerating initramfs..."
+KERNEL_VERSION="$(rpm -q --queryformat="%{evr}.%{arch}" kernel-core)"
+export DRACUT_NO_XATTR=1
+/usr/bin/dracut --no-hostonly --kver "${KERNEL_VERSION}" --reproducible -v \
+    --add ostree -f "/lib/modules/${KERNEL_VERSION}/initramfs.img"
+chmod 0600 "/lib/modules/${KERNEL_VERSION}/initramfs.img"
+
+# Fail loudly here rather than after a reboot: the whole point of the rebuild
+# is getting this file into the initramfs.
+#
+# Not `grep -q`: it exits on first match, SIGPIPEs lsinitrd, and pipefail then
+# reports 141 for what was actually a successful match. Plain grep reads to
+# EOF and prints the hit, which also lands it in the build log.
+lsinitrd "/lib/modules/${KERNEL_VERSION}/initramfs.img" \
+    | grep "nvidia-tilefin.conf"
 
 echo "Build complete!"
