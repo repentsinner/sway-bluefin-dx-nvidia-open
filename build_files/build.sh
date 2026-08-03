@@ -387,34 +387,6 @@ cat > /etc/systemd/user.conf.d/memlock.conf <<'EOF'
 DefaultLimitMEMLOCK=infinity
 EOF
 
-# BAR1 configuration for GPUDirect RDMA (S20) and GPUDirect Storage (S29).
-#
-# Resizable BAR lets the NVIDIA driver map full VRAM over PCIe instead of a
-# 256 MiB sliding window. UEFI must also have "Above 4G Decoding" and
-# "Resizable BAR" enabled.
-#
-# Static BAR1 maps the whole framebuffer into BAR1 up front, which is what
-# lets the kernel's PCI P2PDMA allocator hand NVMe the GPU's BAR1 addresses
-# for cuFile transfers. It depends on resizable BAR rather than conflicting
-# with it: it engages only when BAR1 can map all of VRAM once, so at the
-# 256 MiB default it would fail driver init.
-#
-# Value 2 is AUTO, which reserves BAR1 for other expected mappings —
-# GPUDirect RDMA's among them. Value 1 (ENABLE) ignores those and risks
-# BAR1 exhaustion later.
-mkdir -p /etc/modprobe.d
-cat > /etc/modprobe.d/nvidia-rebar.conf <<'EOF'
-options nvidia NVreg_EnableResizableBar=1
-options nvidia NVreg_RegistryDwords="RMForceStaticBar1=2"
-EOF
-
-# Allow non-root users to access GPU performance counters — required for
-# profiling tools (Nsight Compute/Systems, CUPTI). Without this they fail
-# with ERR_NVGPUCTRPERM.
-cat > /etc/modprobe.d/nvidia-profiling.conf <<'EOF'
-options nvidia NVreg_RestrictProfilingToAdminUsers=0
-EOF
-
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
@@ -438,6 +410,46 @@ EOF
 # contexts and crashes Electron apps on resume)
 cat > /usr/lib/bootc/kargs.d/30-nvidia-drm.toml <<'EOF'
 kargs = ["nvidia-drm.modeset=1"]
+EOF
+
+# NVIDIA module parameters — kernel args, deliberately not modprobe.d.
+#
+# nvidia.ko loads from the initramfs, seconds before switch-root. That
+# initramfs is generated in the ublue base image, so it captures the base's
+# /usr/lib/modprobe.d and nothing this script writes afterwards: options
+# placed in /etc/modprobe.d read back as their defaults on the running
+# system (verify with /proc/driver/nvidia/params). Kernel command line
+# parameters bind at module load regardless of when the module is loaded,
+# which is why nvidia-drm.modeset above is a karg too. Regenerating the
+# initramfs in this layer would also work, but kargs are cheaper and are
+# already the established pattern here.
+#
+# NVreg_EnableResizableBar: driver-side opt-in to size BAR1 to full VRAM.
+#   UEFI must also have "Above 4G Decoding" and "Resizable BAR" enabled.
+#   Where firmware already sizes BAR1 to full VRAM this changes nothing;
+#   it makes the driver's own request explicit rather than relying on it.
+#
+# RMForceStaticBar1=2: maps the whole framebuffer into BAR1 up front, so
+#   the kernel's PCI P2PDMA allocator can hand NVMe the GPU's BAR1
+#   addresses for cuFile transfers (S29). 2 is AUTO, which reserves BAR1
+#   for other expected mappings — GPUDirect RDMA's among them (S20). 1
+#   (ENABLE) ignores those and risks BAR1 exhaustion. Static BAR1 engages
+#   only when BAR1 can map all of VRAM once; at AUTO it declines rather
+#   than failing driver init.
+#   RegistryDwords takes key=value pairs separated by ';'. One pair parses
+#   cleanly here because the kernel splits module params on the first '=';
+#   adding a second pair would need cmdline quoting.
+#
+# NVreg_RestrictProfilingToAdminUsers=0: non-root access to GPU
+#   performance counters for Nsight Compute/Systems and CUPTI, which
+#   otherwise fail with ERR_NVGPUCTRPERM. Confirm with
+#   RmProfilingAdminOnly in /proc/driver/nvidia/params.
+cat > /usr/lib/bootc/kargs.d/40-nvidia-params.toml <<'EOF'
+kargs = [
+  "nvidia.NVreg_EnableResizableBar=1",
+  "nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2",
+  "nvidia.NVreg_RestrictProfilingToAdminUsers=0"
+]
 EOF
 
 ###############################################################################

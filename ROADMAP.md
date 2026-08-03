@@ -106,42 +106,52 @@ Completed work is removed — see CHANGELOG.md for history.
 
 ## GPUDirect Storage (S29)
 
-- **gds-static-bar1**: Add `NVreg_RegistryDwords="RMForceStaticBar1=2"`
-  to `/etc/modprobe.d/nvidia-rebar.conf` alongside the existing
-  `NVreg_EnableResizableBar=1`, so the kernel PCI P2PDMA allocator can
-  hand NVMe the GPU's BAR1 addresses (R29.1). AUTO rather than ENABLE, to
-  leave BAR1 headroom for GPUDirect RDMA (S20).
+- **gds-static-bar1**: Set `nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2`
+  so the kernel PCI P2PDMA allocator can hand NVMe the GPU's BAR1
+  addresses (R29.1). AUTO rather than ENABLE, to leave BAR1 headroom for
+  GPUDirect RDMA (S20). Ships as a kernel arg in
+  `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`, not `modprobe.d`, which
+  is inert for initramfs-loaded modules (R29.3); the same file carries
+  `NVreg_EnableResizableBar` and the Nsight/CUPTI profiling option, both
+  of which were previously inert for that reason.
   Files: `build_files/build.sh`.
 
-  **Verify:** Module parameters apply only on driver load, so this needs
-  a reboot onto the rebuilt image. Then: `nvidia-smi -q` still reports a
-  65536 MiB BAR1 (static BAR1 engaged without losing resizable BAR) and
-  the display session comes up. Run the cuFile probe against the XFS
-  volume on `/var/mnt/shuttle` with `allow_compat_mode: false` —
-  `cuFileDriverOpen` must succeed and a 1 MiB `cuFileRead` must return
-  matching data. Before this change the same probe fails with
-  `DRIVER_NOT_INITIALIZED (5001)`.
+  **Verify:** after a reboot onto the rebuilt image, first confirm the
+  parameters actually arrived — `/proc/driver/nvidia/params` should show
+  `RegistryDwords: "RMForceStaticBar1=2"`, `EnableResizableBar: 1`, and
+  `RmProfilingAdminOnly: 0`. A failure with those still at defaults means
+  the delivery mechanism failed again, not that GDS is unsupported. Then
+  `gdscheck -p` should flip `NVMe P2PDMA` from `Unsupported`, and a 1 MiB
+  `cuFileRead` against `/var/mnt/shuttle` with `allow_compat_mode: false`
+  should return matching data. Check `nvidia-smi -q` still reports a
+  65536 MiB BAR1 and that the graphical session comes up.
 
-- **gds-mode-confirm**: Re-run `gdscheck -p` and confirm
-  `NVMe P2PDMA` flips from `Unsupported` to supported. The tooling is not
-  installed on the host or in the image (S29 Out of scope): `gdscheck`
-  comes from the `gds-tools-13-2` RPM in NVIDIA's `fedora43` CUDA repo,
-  which needs only `libnuma`/`libstdc++`/`openssl` and can be extracted
-  and run against the consuming project's `libcufile` without installing
-  anything. Long term it belongs in userbox alongside the other CUDA
-  userspace. Depends on **gds-static-bar1**.
+- **gds-iommu-pt-restore**: One-time `sudo rpm-ostree kargs --append=iommu=pt`
+  on this machine. `iommu=pt` is in `10-iommu.toml` but was deleted
+  locally for the AJA Corvid44 (S19), and a local deletion outranks
+  `kargs.d`, so no image change restores it (R29.2). Verify with
+  `grep -o 'iommu=pt' /proc/cmdline` after reboot. Independent of
+  **gds-static-bar1**; can share the same reboot.
 
-  Baseline before the change, for comparison: `NVMe P2PDMA: Unsupported`,
-  `NVMe: Unsupported`, GPU "supports GDS" at `bar size (MiB):65536`,
-  `Platform verification succeeded`.
+- **gds-mode-confirm**: Re-run `gdscheck -p` and record which modes
+  libcufile reports. The tooling is not installed on the host or in the
+  image (S29 Out of scope): `gdscheck` comes from the `gds-tools-13-2`
+  RPM in NVIDIA's `fedora43` CUDA repo, which needs only
+  `libnuma`/`libstdc++`/`openssl` and can be extracted and run against the
+  consuming project's `libcufile` without installing anything. Long term
+  it belongs in userbox alongside the other CUDA userspace. Depends on
+  **gds-static-bar1**.
 
-  If `cuFileDriverOpen` still fails after the reboot, the fallbacks in
-  order are: `iommu=off` (third S29 open question — costs VFIO
-  passthrough), then `nokaslr` (a security regression), then reopening
-  the rejected `nvidia-fs.ko` build.
+  Baseline for comparison: `NVMe P2PDMA: Unsupported`, `NVMe:
+  Unsupported`, GPU "supports GDS" at `bar size (MiB):65536`, `Platform
+  verification succeeded`.
+
+  If `cuFileDriverOpen` still fails once the parameters are confirmed
+  present, the fallbacks in order are: `iommu=off` (third S29 open
+  question — costs VFIO passthrough), then `nokaslr` (a security
+  regression), then reopening the rejected `nvidia-fs.ko` build.
 
   Test both kargs transiently first — edit the entry at the GRUB menu
   (`e`, append, Ctrl-X). They persist to `kargs.d` only once proven
-  necessary. Only the `modprobe.d` dword needs an image rebuild, so
-  changing one variable per boot costs nothing but the boot itself, and
-  a passing test with two variables changed proves neither.
+  necessary. Changing one variable per boot costs nothing but the boot
+  itself, and a passing test with two variables changed proves neither.

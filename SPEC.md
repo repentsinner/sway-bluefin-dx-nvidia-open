@@ -1267,10 +1267,12 @@ upstream NVMe driver and the kernel's PCI P2PDMA layer; NVIDIA states it
 "eliminate[s] the need for custom MOFED NVMe patches and nvidia-fs.ko to
 support GDS with Ext4 and XFS with NVMe drives."
 
-Every prerequisite is already met — kernel 7.0.9 (≥ 6.2),
-`CONFIG_PCI_P2PDMA=y`, open driver 595.71.05 (≥ 570), CUDA 13.2
+Every prerequisite is already met — kernel 7.1.5 (≥ 6.2),
+`CONFIG_PCI_P2PDMA=y`, open driver 610.43.03 (≥ 570), CUDA 13.2
 userspace, plain NVMe with no RAID0 or multipath. Only a driver registry
-key is missing (R29.1).
+key is missing (R29.1). Kernel and driver versions track the base image
+and move with it; the constraints are the floors, not these exact
+builds.
 
 Scope is the host enabling config alone. GDS userspace — `libcufile`,
 `gdscheck` — is a CUDA toolkit component belonging to the consuming
@@ -1323,8 +1325,9 @@ if a workload needs a filesystem `p2pdma` does not cover.
 The kernel's P2PDMA allocator hands NVMe the GPU's BAR1 addresses
 directly, which requires the framebuffer to be statically mapped into
 BAR1 rather than mapped through a sliding window.
-`/etc/modprobe.d/nvidia-rebar.conf` sets
-`NVreg_RegistryDwords="RMForceStaticBar1=2"`.
+`/usr/lib/bootc/kargs.d/40-nvidia-params.toml` sets
+`nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2` (R29.3 explains why
+this is a kernel arg rather than a `modprobe.d` option).
 
 The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
 "will only map static BAR1 if static BAR1 size is calculated to be big
@@ -1334,12 +1337,15 @@ expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
 other mappings are GPUDirect RDMA's (S20), which this image intends to
 keep working.
 
-Static BAR1 depends on the resizable-BAR setting in the same file, not
-conflicting with it: it engages only when BAR1 can map the whole
-framebuffer. On the target hardware BAR1 is 65536 MiB against 49140 MiB
-of framebuffer, leaving ~16 GiB for other mappings. Without
-`NVreg_EnableResizableBar=1` BAR1 falls back to 256 MiB and
-`RMForceStaticBar1=1` would fail driver initialization outright.
+Static BAR1 does not conflict with resizable BAR; it requires a BAR1
+large enough to map the whole framebuffer. What supplies that size is
+the firmware, not the driver: on the target hardware BAR1 is 65536 MiB
+against 49140 MiB of framebuffer — leaving ~16 GiB for other mappings —
+while `NVreg_EnableResizableBar` read back as `0`, because the option
+was set in `modprobe.d` and never applied (R29.3). UEFI "Above 4G
+Decoding" and "Resizable BAR" are therefore the real prerequisites. The
+driver-side opt-in is set as a karg alongside the dword to make the
+request explicit rather than incidental.
 
 `RmForceDisableIomapWC=1` is cited alongside these keys in NVIDIA forum
 guidance but is documented as a workaround "for chipsets where
@@ -1361,18 +1367,55 @@ functionally or in a performant way with iommu=on/pt", and NVIDIA's tool
 does not distinguish `pt` from `on` there. Whether `pt` suffices in
 practice is an open question below.
 
-Deployments predating that karg boot `intel_iommu=on amd_iommu=on`
-alone — translated mode — and must be rebased onto a current image
-before GDS can work at all.
+Rebasing onto a current image is not sufficient to get `iommu=pt` on a
+machine that once had it removed. `kargs.d` is applied as a diff against
+the previous image, and a local deletion outranks it: this machine boots
+`intel_iommu=on amd_iommu=on` from `10-iommu.toml` while `iommu=pt` from
+the same file is absent, because it was deleted locally when the AJA
+Corvid44 needed the SWIOTLB bounce path (S19). Restoring it takes a
+one-time `rpm-ostree kargs --append=iommu=pt`; no image change will do
+it.
+
+#### R29.3: NVIDIA module parameters are kernel args
+
+Module options this image adds under `/etc/modprobe.d/` never reach the
+NVIDIA driver. `nvidia.ko` loads from the initramfs, seconds before
+`initrd-switch-root`, and that initramfs is generated in the ublue base
+image — so it captures the base's `/usr/lib/modprobe.d` and nothing
+`build.sh` writes afterwards.
+
+The evidence is a clean split in `/proc/driver/nvidia/params`: options
+from the base image's `/usr/lib/modprobe.d/nvidia.conf`
+(`PreserveVideoMemoryAllocations`, `UseKernelSuspendNotifiers`,
+`TemporaryFilePath`) all apply, while every option this image added under
+`/etc/modprobe.d/` reads back as its default.
+
+All NVIDIA module parameters therefore live in
+`/usr/lib/bootc/kargs.d/40-nvidia-params.toml`, matching the existing
+`nvidia-drm.modeset=1` karg. Kernel command line parameters bind at
+module load regardless of where the module is loaded from. Regenerating
+the initramfs in this layer would also work and would make `modprobe.d`
+behave as expected, at the cost of owning initramfs generation.
+
+This subsumes the profiling option added for Nsight/CUPTI, which was
+inert for the same reason — `RmProfilingAdminOnly` read back as `1`
+despite `NVreg_RestrictProfilingToAdminUsers=0` in `/etc/modprobe.d/`.
+
+Anything added to `/etc/modprobe.d/` for a module the initramfs loads is
+silently ineffective. Check `/proc/driver/nvidia/params`, not the file.
 
 #### Open questions
 
-- **Does the registry key alone unblock `cuFileDriverOpen`?** Unverified.
-  Module parameters apply only on driver load, so confirmation needs a
-  reboot onto an image carrying R29.1. The failure mode observed so far
-  reports "nvidia-fs driver is not loaded" regardless of `p2pdma`
-  availability, so the error text alone does not distinguish a missing
-  module from a missing registry key.
+- **Does the registry key alone unblock `cuFileDriverOpen`?** Still
+  unverified. The first attempt shipped the key via `modprobe.d`, where
+  it never reached the driver (R29.3), so that reboot tested nothing:
+  `gdscheck -p` still reported `NVMe P2PDMA: Unsupported` and
+  `/proc/driver/nvidia/params` still showed `RegistryDwords: ""`. The
+  karg form has not yet been through a boot. Note the failure mode
+  reports "nvidia-fs driver is not loaded" whether `p2pdma` is
+  unavailable or merely unconfigured, so the error text alone proves
+  nothing — read `/proc/driver/nvidia/params` to confirm the parameter
+  arrived before drawing conclusions from a failure.
 - **Is `iommu=pt` enough?** `gdscheck -p` warns for `iommu=on/pt` without
   distinguishing the two, so passthrough carries no vendor guarantee.
   The kernel side is not the risk: `drivers/pci/p2pdma.c` contains no
