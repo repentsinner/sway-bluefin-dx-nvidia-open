@@ -1366,14 +1366,20 @@ that BAR1 is mapped uncached rather than write-combined, slowing
 CPU-side writes through the aperture; GPU and NVMe DMA are unaffected.
 
 The two keys go in one `NVreg_RegistryDwords` value separated by `;`,
-and that value must be quoted in the karg. GRUB parses `;` as a
-statement separator and truncates the kernel line there: unquoted, the
-BLS entry holds both pairs while `/proc/cmdline` and
-`/proc/driver/nvidia/params` show only `RMForceStaticBar1=2`. The driver
-hardcodes the separator — `rm_string_token(&ptr, ';')` in `osapi.c` —
-so there is no alternative to fall back on. Quoting survives either GRUB
-behaviour: strip the quotes and the kernel gets the bare value; pass
-them through and the kernel's `next_arg()` strips them from the value.
+which rules out delivering it as a kernel arg. GRUB parses `;` as a
+statement separator and truncates the kernel line there, and quoting
+does not rescue it because bootc normalises the quotes away when writing
+the BLS entry — observed twice, with the entry holding both pairs while
+`/proc/cmdline` and `/proc/driver/nvidia/params` showed only
+`RMForceStaticBar1=2`. The driver hardcodes the separator
+(`rm_string_token(&ptr, ';')` in `osapi.c`), so there is no alternative
+to fall back on.
+
+This one parameter therefore ships in
+`/usr/lib/modprobe.d/nvidia-tilefin.conf`, which puts no bootloader in
+the path, and the image regenerates its initramfs so the file is
+actually read (R29.3). The `;`-free parameters stay as kargs, so a
+dracut failure cannot regress settings that already work.
 
 The observable signal that both gates passed is
 `/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
@@ -1421,12 +1427,19 @@ from the base image's `/usr/lib/modprobe.d/nvidia.conf`
 `TemporaryFilePath`) all apply, while every option this image added under
 `/etc/modprobe.d/` reads back as its default.
 
-All NVIDIA module parameters therefore live in
-`/usr/lib/bootc/kargs.d/40-nvidia-params.toml`, matching the existing
-`nvidia-drm.modeset=1` karg. Kernel command line parameters bind at
-module load regardless of where the module is loaded from. Regenerating
-the initramfs in this layer would also work and would make `modprobe.d`
-behave as expected, at the cost of owning initramfs generation.
+Two deliveries are therefore in play. Parameters whose values contain no
+`;` ship as kargs in `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`,
+matching the existing `nvidia-drm.modeset=1`; kernel command line
+parameters bind at module load regardless of where the module came from.
+`NVreg_RegistryDwords` cannot use that route (R29.1), so the image
+regenerates its initramfs — invocation mirroring
+`ublue-os/main build_files/initramfs.sh` — and ships that parameter in
+`/usr/lib/modprobe.d/nvidia-tilefin.conf`.
+
+The build asserts the result with
+`lsinitrd … | grep -q nvidia-tilefin.conf`. Every delivery failure in
+this section's history was invisible until a reboot; this one fails the
+build instead.
 
 This subsumes the profiling option added for Nsight/CUPTI, which was
 inert for the same reason — `RmProfilingAdminOnly` read back as `1`

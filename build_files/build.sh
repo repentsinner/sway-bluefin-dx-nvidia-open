@@ -466,9 +466,26 @@ EOF
 cat > /usr/lib/bootc/kargs.d/40-nvidia-params.toml <<'EOF'
 kargs = [
   "nvidia.NVreg_EnableResizableBar=1",
-  "nvidia.NVreg_RegistryDwords=\"RMForceStaticBar1=2;RmForceDisableIomapWC=1\"",
   "nvidia.NVreg_RestrictProfilingToAdminUsers=0"
 ]
+EOF
+
+# NVreg_RegistryDwords cannot travel as a kernel arg: its pairs are
+# ';'-separated, GRUB parses ';' as a statement separator and truncates the
+# kernel line there, and quoting does not help because bootc normalises the
+# quotes away when writing the BLS entry. Observed twice — the BLS entry held
+# both pairs while /proc/cmdline and /proc/driver/nvidia/params showed only
+# RMForceStaticBar1=2.
+#
+# modprobe.d has no bootloader in the path and handles the quoted value
+# natively. It only works if the file is in the initramfs, since nvidia.ko
+# loads there (see the note above), which is why this layer regenerates the
+# initramfs below. Kept separate from the kargs above so that a dracut
+# failure cannot regress parameters that already work.
+cat > /usr/lib/modprobe.d/nvidia-tilefin.conf <<'EOF'
+# GPUDirect Storage (S29): static BAR1, not write-combined, so the driver
+# registers BAR1 with the kernel PCI P2PDMA layer.
+options nvidia NVreg_RegistryDwords="RMForceStaticBar1=2;RmForceDisableIomapWC=1"
 EOF
 
 ###############################################################################
@@ -479,5 +496,32 @@ echo "Installing custom ujust recipes..."
 cp /ctx/60-custom.just /usr/share/ublue-os/just/60-custom.just
 cp /ctx/tilefin.just /usr/share/ublue-os/just/61-tilefin.just
 cp /ctx/bmd.just /usr/share/ublue-os/just/62-bmd.just
+
+###############################################################################
+# Regenerate Initramfs
+###############################################################################
+
+# The base image's initramfs predates this layer, so it carries the base's
+# /usr/lib/modprobe.d and none of the files written above. nvidia.ko loads
+# from the initramfs, seconds before switch-root, so without this step
+# nvidia-tilefin.conf is silently ignored (S29 R29.3).
+#
+# Invocation mirrors ublue-os/main build_files/initramfs.sh so the result
+# matches what the base image would have produced.
+echo "Regenerating initramfs..."
+KERNEL_VERSION="$(rpm -q --queryformat="%{evr}.%{arch}" kernel-core)"
+export DRACUT_NO_XATTR=1
+/usr/bin/dracut --no-hostonly --kver "${KERNEL_VERSION}" --reproducible -v \
+    --add ostree -f "/lib/modules/${KERNEL_VERSION}/initramfs.img"
+chmod 0600 "/lib/modules/${KERNEL_VERSION}/initramfs.img"
+
+# Fail loudly here rather than after a reboot: the whole point of the rebuild
+# is getting this file into the initramfs.
+#
+# Not `grep -q`: it exits on first match, SIGPIPEs lsinitrd, and pipefail then
+# reports 141 for what was actually a successful match. Plain grep reads to
+# EOF and prints the hit, which also lands it in the build log.
+lsinitrd "/lib/modules/${KERNEL_VERSION}/initramfs.img" \
+    | grep "nvidia-tilefin.conf"
 
 echo "Build complete!"

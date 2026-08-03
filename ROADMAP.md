@@ -112,11 +112,18 @@ Completed work is removed — see CHANGELOG.md for history.
   addresses (R29.1). Both keys are required: the driver skips P2PDMA
   registration unless static BAR1 is enabled *and* not write-combined.
   AUTO rather than ENABLE, to leave BAR1 headroom for GPUDirect RDMA
-  (S20). Ships as a kernel arg in
-  `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`, not `modprobe.d`, which
-  is inert for initramfs-loaded modules (R29.3); the same file carries
-  `NVreg_EnableResizableBar` and the Nsight/CUPTI profiling option, both
-  of which were previously inert for that reason.
+  (S20).
+
+  Delivery is split. `NVreg_EnableResizableBar` and the Nsight/CUPTI
+  profiling option ship as kargs in
+  `/usr/lib/bootc/kargs.d/40-nvidia-params.toml` — both were previously
+  inert in `modprobe.d` (R29.3). `NVreg_RegistryDwords` cannot go there:
+  its `;` separator is truncated by GRUB and quoting is normalised away
+  by bootc, so it ships in `/usr/lib/modprobe.d/nvidia-tilefin.conf` with
+  the initramfs regenerated so the file is read. Keeping them separate
+  means a dracut failure cannot regress the working kargs. The build
+  asserts `lsinitrd | grep -q nvidia-tilefin.conf` rather than deferring
+  that check to a reboot.
   Files: `build_files/build.sh`.
 
   **Verify:** after a reboot onto the rebuilt image, in this order.
