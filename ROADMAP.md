@@ -122,7 +122,10 @@ Completed work is removed — see CHANGELOG.md for history.
   **Verify:** after a reboot onto the rebuilt image, in this order.
   First that the parameters arrived — `/proc/driver/nvidia/params` should
   show `RegistryDwords: "RMForceStaticBar1=2;RmForceDisableIomapWC=1"`,
-  `EnableResizableBar: 1`, `RmProfilingAdminOnly: 0`. Then the decisive
+  `EnableResizableBar: 1`, `RmProfilingAdminOnly: 0`. A `RegistryDwords`
+  holding only the first pair means GRUB truncated the karg at the `;`
+  again and the quoting did not take, which is a delivery failure rather
+  than a driver one. Then the decisive
   kernel-side signal: `/sys/bus/pci/devices/0000:41:00.0/p2pmem/` must
   exist, which means the driver cleared both gates and registered BAR1
   with the P2PDMA layer. Only then does userspace matter — `gdscheck -p`

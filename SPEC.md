@@ -1365,10 +1365,22 @@ no `p2pmem` pool and cuFile silently falls back to `compat`. The cost is
 that BAR1 is mapped uncached rather than write-combined, slowing
 CPU-side writes through the aperture; GPU and NVMe DMA are unaffected.
 
+The two keys go in one `NVreg_RegistryDwords` value separated by `;`,
+and that value must be quoted in the karg. GRUB parses `;` as a
+statement separator and truncates the kernel line there: unquoted, the
+BLS entry holds both pairs while `/proc/cmdline` and
+`/proc/driver/nvidia/params` show only `RMForceStaticBar1=2`. The driver
+hardcodes the separator — `rm_string_token(&ptr, ';')` in `osapi.c` —
+so there is no alternative to fall back on. Quoting survives either GRUB
+behaviour: strip the quotes and the kernel gets the bare value; pass
+them through and the kernel's `next_arg()` strips them from the value.
+
 The observable signal that both gates passed is
 `/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
 the driver never registered the pool and no userspace configuration will
-produce a DMA path.
+produce a DMA path. Check `/proc/driver/nvidia/params` alongside it —
+a truncated `RegistryDwords` means the parameter never arrived, which is
+a different failure from the driver declining to register.
 
 #### R29.2: IOMMU mode
 

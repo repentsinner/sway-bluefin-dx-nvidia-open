@@ -447,9 +447,17 @@ EOF
 #   uncached rather than write-combined, which slows CPU-side writes
 #   through the aperture.
 #
-#   RegistryDwords takes key=value pairs separated by ';'. The kernel
-#   splits module params on the first '=' and treats ';' as ordinary
-#   value text, so the pair list passes through the cmdline intact.
+#   RegistryDwords takes key=value pairs separated by ';', and the value
+#   MUST be quoted. The kernel is fine with ';' — it splits module params
+#   on the first '=' and treats the rest as opaque — but GRUB parses ';'
+#   as a statement separator and silently truncates the kernel line
+#   there. Unquoted, the BLS entry carries both pairs while /proc/cmdline
+#   shows only the first, and the driver applies only RMForceStaticBar1.
+#   Quoting survives either GRUB behaviour: if GRUB strips the quotes the
+#   kernel gets the bare value, and if it passes them through the kernel's
+#   next_arg() strips them from the value itself.
+#   The driver hardcodes ';' (rm_string_token(&ptr, ';') in osapi.c), so
+#   there is no alternative separator to fall back on.
 #
 # NVreg_RestrictProfilingToAdminUsers=0: non-root access to GPU
 #   performance counters for Nsight Compute/Systems and CUPTI, which
@@ -458,7 +466,7 @@ EOF
 cat > /usr/lib/bootc/kargs.d/40-nvidia-params.toml <<'EOF'
 kargs = [
   "nvidia.NVreg_EnableResizableBar=1",
-  "nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2;RmForceDisableIomapWC=1",
+  "nvidia.NVreg_RegistryDwords=\"RMForceStaticBar1=2;RmForceDisableIomapWC=1\"",
   "nvidia.NVreg_RestrictProfilingToAdminUsers=0"
 ]
 EOF
