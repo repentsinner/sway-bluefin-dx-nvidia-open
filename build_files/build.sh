@@ -436,9 +436,20 @@ EOF
 #   (ENABLE) ignores those and risks BAR1 exhaustion. Static BAR1 engages
 #   only when BAR1 can map all of VRAM once; at AUTO it declines rather
 #   than failing driver init.
-#   RegistryDwords takes key=value pairs separated by ';'. One pair parses
-#   cleanly here because the kernel splits module params on the first '=';
-#   adding a second pair would need cmdline quoting.
+#
+# RmForceDisableIomapWC=1: both halves of the driver's gate on registering
+#   BAR1 with the kernel P2PDMA layer. uvm_devmem.c bails out on
+#   "!static_bar1_size || static_bar1_write_combined" before ever calling
+#   pci_p2pdma_add_resource(), so a write-combined static BAR1 silently
+#   yields no p2pmem pool and cuFile falls back to compat. NVIDIA
+#   documents this key as a workaround for broken write-combine, but the
+#   driver source makes it a P2PDMA prerequisite. Cost: BAR1 is mapped
+#   uncached rather than write-combined, which slows CPU-side writes
+#   through the aperture.
+#
+#   RegistryDwords takes key=value pairs separated by ';'. The kernel
+#   splits module params on the first '=' and treats ';' as ordinary
+#   value text, so the pair list passes through the cmdline intact.
 #
 # NVreg_RestrictProfilingToAdminUsers=0: non-root access to GPU
 #   performance counters for Nsight Compute/Systems and CUPTI, which
@@ -447,7 +458,7 @@ EOF
 cat > /usr/lib/bootc/kargs.d/40-nvidia-params.toml <<'EOF'
 kargs = [
   "nvidia.NVreg_EnableResizableBar=1",
-  "nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2",
+  "nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2;RmForceDisableIomapWC=1",
   "nvidia.NVreg_RestrictProfilingToAdminUsers=0"
 ]
 EOF

@@ -106,25 +106,36 @@ Completed work is removed — see CHANGELOG.md for history.
 
 ## GPUDirect Storage (S29)
 
-- **gds-static-bar1**: Set `nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2`
+- **gds-static-bar1**: Set
+  `nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2;RmForceDisableIomapWC=1`
   so the kernel PCI P2PDMA allocator can hand NVMe the GPU's BAR1
-  addresses (R29.1). AUTO rather than ENABLE, to leave BAR1 headroom for
-  GPUDirect RDMA (S20). Ships as a kernel arg in
+  addresses (R29.1). Both keys are required: the driver skips P2PDMA
+  registration unless static BAR1 is enabled *and* not write-combined.
+  AUTO rather than ENABLE, to leave BAR1 headroom for GPUDirect RDMA
+  (S20). Ships as a kernel arg in
   `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`, not `modprobe.d`, which
   is inert for initramfs-loaded modules (R29.3); the same file carries
   `NVreg_EnableResizableBar` and the Nsight/CUPTI profiling option, both
   of which were previously inert for that reason.
   Files: `build_files/build.sh`.
 
-  **Verify:** after a reboot onto the rebuilt image, first confirm the
-  parameters actually arrived — `/proc/driver/nvidia/params` should show
-  `RegistryDwords: "RMForceStaticBar1=2"`, `EnableResizableBar: 1`, and
-  `RmProfilingAdminOnly: 0`. A failure with those still at defaults means
-  the delivery mechanism failed again, not that GDS is unsupported. Then
-  `gdscheck -p` should flip `NVMe P2PDMA` from `Unsupported`, and a 1 MiB
-  `cuFileRead` against `/var/mnt/shuttle` with `allow_compat_mode: false`
-  should return matching data. Check `nvidia-smi -q` still reports a
-  65536 MiB BAR1 and that the graphical session comes up.
+  **Verify:** after a reboot onto the rebuilt image, in this order.
+  First that the parameters arrived — `/proc/driver/nvidia/params` should
+  show `RegistryDwords: "RMForceStaticBar1=2;RmForceDisableIomapWC=1"`,
+  `EnableResizableBar: 1`, `RmProfilingAdminOnly: 0`. Then the decisive
+  kernel-side signal: `/sys/bus/pci/devices/0000:41:00.0/p2pmem/` must
+  exist, which means the driver cleared both gates and registered BAR1
+  with the P2PDMA layer. Only then does userspace matter — `gdscheck -p`
+  with `use_pci_p2pdma` enabled should report NVMe as something other
+  than `compat`, and a 1 MiB `cuFileRead` against `/var/mnt/shuttle` with
+  `allow_compat_mode: false` should return matching data. Check
+  `nvidia-smi -q` still reports a 65536 MiB BAR1 and the session starts.
+
+  If `p2pmem/` is still absent with the parameters confirmed present, the
+  remaining gate is `static_bar1_size` — escalate `RMForceStaticBar1` from
+  `2` (AUTO, which declines when it judges BAR1 headroom insufficient) to
+  `1` (ENABLE, which forces it and accepts the BAR1 exhaustion risk that
+  S20's GPUDirect RDMA mappings would otherwise be protected from).
 
 - **gds-iommu-pt-restore**: One-time `sudo rpm-ostree kargs --append=iommu=pt`
   on this machine. `iommu=pt` is in `10-iommu.toml` but was deleted
@@ -135,12 +146,18 @@ Completed work is removed — see CHANGELOG.md for history.
 
 - **gds-mode-confirm**: Re-run `gdscheck -p` and record which modes
   libcufile reports. The tooling is not installed on the host or in the
-  image (S29 Out of scope): `gdscheck` comes from the `gds-tools-13-2`
-  RPM in NVIDIA's `fedora43` CUDA repo, which needs only
-  `libnuma`/`libstdc++`/`openssl` and can be extracted and run against the
-  consuming project's `libcufile` without installing anything. Long term
-  it belongs in userbox alongside the other CUDA userspace. Depends on
+  image (S29 Out of scope): `gdscheck` and `libcufile` come from the
+  `gds-tools-13-2` and `libcufile-13-2` RPMs in NVIDIA's `fedora43` CUDA
+  repo, which need only `libnuma`/`libstdc++`/`openssl` and can be
+  extracted and run without installing anything. Long term they belong in
+  userbox alongside the other CUDA userspace. Depends on
   **gds-static-bar1**.
+
+  Use matched versions. Running the 1.17 `gdscheck` against the pip
+  wheel's older `libcufile` (GDS 1.15.1.6) reports a different and
+  misleading driver-configuration table. Also set `use_pci_p2pdma: true`
+  in `cufile.json` — the shipped default is `false`, so the p2pdma path
+  is never attempted and every storage row reads `compat`.
 
   Baseline for comparison: `NVMe P2PDMA: Unsupported`, `NVMe:
   Unsupported`, GPU "supports GDS" at `bar size (MiB):65536`, `Platform

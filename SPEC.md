@@ -1279,6 +1279,14 @@ Scope is the host enabling config alone. GDS userspace — `libcufile`,
 project (see Out of scope), matching the S28 split between image-side
 enabling config and userspace tooling.
 
+That split leaves one obligation on the consumer: libcufile ships
+`"use_pci_p2pdma": false`, so p2pdma is off by default and must be
+enabled in `cufile.json` (system-wide at `/etc/cufile.json`, or per
+process via `CUFILE_ENV_PATH_JSON`). Neither the image nor the CUDA
+packages create that file. A consumer that skips this gets `compat`
+— a working cuFile API backed by a CPU bounce buffer — with no error to
+distinguish it from a hardware or driver limitation.
+
 ##### PCIe topology
 
 The GPU and the NVMe drives sit on different root complexes: the GPU at
@@ -1347,9 +1355,20 @@ Decoding" and "Resizable BAR" are therefore the real prerequisites. The
 driver-side opt-in is set as a karg alongside the dword to make the
 request explicit rather than incidental.
 
-`RmForceDisableIomapWC=1` is cited alongside these keys in NVIDIA forum
-guidance but is documented as a workaround "for chipsets where
-write-combine is broken", not a P2PDMA requirement. It is not set.
+`RmForceDisableIomapWC=1` is set alongside it, and is not optional
+despite NVIDIA documenting it as a workaround "for chipsets where
+write-combine is broken". The driver gates P2PDMA registration on both
+conditions — `uvm_devmem.c` returns early on
+`!static_bar1_size || static_bar1_write_combined` before it ever calls
+`pci_p2pdma_add_resource()` — so a write-combined static BAR1 registers
+no `p2pmem` pool and cuFile silently falls back to `compat`. The cost is
+that BAR1 is mapped uncached rather than write-combined, slowing
+CPU-side writes through the aperture; GPU and NVMe DMA are unaffected.
+
+The observable signal that both gates passed is
+`/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
+the driver never registered the pool and no userspace configuration will
+produce a DMA path.
 
 #### R29.2: IOMMU mode
 
