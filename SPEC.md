@@ -1236,8 +1236,166 @@ login keyring with the login password at session start. gh secure
 storage and `secret-tool` resolve to this keyring; gh no longer writes
 its token to plaintext `hosts.yml`.
 
+### S29: GPUDirect Storage
+
+*Status: in progress*
+
+#### Problem
+
+A consuming project on this host needs NVIDIA GPUDirect Storage — the
+`cuFile` API reading NVMe data directly into GPU memory, with no bounce
+buffer through host RAM. GDS does not work on the image as shipped:
+`cuFileDriverOpen` fails with `DRIVER_NOT_INITIALIZED (5001)`.
+
+The image carries five NVIDIA modules from ublue's `kmod-nvidia`:
+`nvidia`, `nvidia-drm`, `nvidia-modeset`, `nvidia-uvm`, and
+`nvidia-peermem`. The last is GPUDirect RDMA for the network path
+(S20), not storage. There is no `nvidia-fs`.
+
+#### Design
+
+libcufile has three modes. `compat` bounces through host memory and
+defeats the purpose; the other two are real DMA paths:
+
+| Mode | Kernel module | Storage |
+|---|---|---|
+| `nvfs` | `nvidia-fs.ko` | all VFS filesystems, distributed FS, NFS over RDMA |
+| `p2pdma` | none | ext4/XFS on NVMe; no RAID0 or multipath |
+
+This image uses `p2pdma`. As of CUDA 12.8 it drives GDS through the
+upstream NVMe driver and the kernel's PCI P2PDMA layer; NVIDIA states it
+"eliminate[s] the need for custom MOFED NVMe patches and nvidia-fs.ko to
+support GDS with Ext4 and XFS with NVMe drives."
+
+Every prerequisite is already met — kernel 7.0.9 (≥ 6.2),
+`CONFIG_PCI_P2PDMA=y`, open driver 595.71.05 (≥ 570), CUDA 13.2
+userspace, plain NVMe with no RAID0 or multipath. Only a driver registry
+key is missing (R29.1).
+
+Scope is the host enabling config alone. GDS userspace — `libcufile`,
+`gdscheck` — is a CUDA toolkit component belonging to the consuming
+project (see Out of scope), matching the S28 split between image-side
+enabling config and userspace tooling.
+
+##### PCIe topology
+
+The GPU and the NVMe drives sit on different root complexes: the GPU at
+`0000:41:00.0` under host bridge `0000:40`, both NVMe controllers under
+`0000:20` (`0000:21:00.0` boot, `0000:22:00.0` the XFS data volume).
+They share no upstream bridge, so the kernel classifies the transfer as
+`PCI_P2PDMA_MAP_THRU_HOST_BRIDGE`.
+
+That is supported here rather than rejected. `calc_map_type_and_dist()`
+in `drivers/pci/p2pdma.c` disqualifies such a pair only when
+`!cpu_supports_p2pdma() && !host_bridge_whitelist(...)`, and
+`cpu_supports_p2pdma()` returns true for "any AMD CPU whose family ID is
+Zen or newer" — this machine is a Threadripper PRO 3975WX, family 0x17.
+The Intel-only device whitelist is never consulted. PCIe ACS redirect
+likewise does not disqualify the path: it only downgrades the
+shared-bridge `PCI_P2PDMA_MAP_BUS_ADDR` fast path, which a
+cross-root-complex pair never takes.
+
+Traffic therefore crosses the root complex by design, which bounds
+achievable bandwidth below what a shared-switch topology would give.
+That is a performance ceiling, not a functional blocker.
+
+#### Rejected: building nvidia-fs.ko
+
+Compiling nvidia-fs into the image was prototyped and rejected. It is
+buildable — the module needs one driver header (`nv-p2p.h`, public
+because the image runs the *open* driver), symbol CRCs read from the
+shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
+— but:
+
+- The `nvfs` path wants NVMe driver patches from DOCA's
+  `mlnx-nvme-dkms`. DOCA on Fedora is the same blocker that stalls S20,
+  so the module alone may not deliver a working DMA path.
+- It commits the image to rebuilding an out-of-tree module against every
+  kernel bump, pinned to an nvidia-fs release that supports that kernel.
+- The result is unsigned. ublue signs its akmods with a key this repo
+  does not hold, so the module loads only with Secure Boot disabled.
+
+`p2pdma` avoids all three. Revisit only if R29.1 fails verification, or
+if a workload needs a filesystem `p2pdma` does not cover.
+
+#### R29.1: Static BAR1 for PCI P2PDMA
+
+The kernel's P2PDMA allocator hands NVMe the GPU's BAR1 addresses
+directly, which requires the framebuffer to be statically mapped into
+BAR1 rather than mapped through a sliding window.
+`/etc/modprobe.d/nvidia-rebar.conf` sets
+`NVreg_RegistryDwords="RMForceStaticBar1=2"`.
+
+The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
+"will only map static BAR1 if static BAR1 size is calculated to be big
+enough to map all of FB once plus a calculated amount for other expected
+BAR1 mappings", whereas ENABLE "does not take into account other
+expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
+other mappings are GPUDirect RDMA's (S20), which this image intends to
+keep working.
+
+Static BAR1 depends on the resizable-BAR setting in the same file, not
+conflicting with it: it engages only when BAR1 can map the whole
+framebuffer. On the target hardware BAR1 is 65536 MiB against 49140 MiB
+of framebuffer, leaving ~16 GiB for other mappings. Without
+`NVreg_EnableResizableBar=1` BAR1 falls back to 256 MiB and
+`RMForceStaticBar1=1` would fail driver initialization outright.
+
+`RmForceDisableIomapWC=1` is cited alongside these keys in NVIDIA forum
+guidance but is documented as a workaround "for chipsets where
+write-combine is broken", not a P2PDMA requirement. It is not set.
+
+#### R29.2: IOMMU mode
+
+GDS peer-to-peer DMA requires the NVMe device to reach the GPU's BAR.
+Under a *translating* IOMMU that path is unreliable, which is the basis
+for NVIDIA's `iommu=off` guidance — a functional constraint, not a
+throughput one. Modern IOMMUs are close to free: `iommu=pt` runs an
+identity-mapped domain for host-driven devices, and Linux defaults to
+lazy IOTLB invalidation for those that are translated.
+
+The image already sets `iommu=pt` (S19), and `gdscheck -p` reports the
+GPU as "supports GDS" under it. That is the starting position, not a
+proven one: the same output warns "GDS is not guaranteed to work
+functionally or in a performant way with iommu=on/pt", and NVIDIA's tool
+does not distinguish `pt` from `on` there. Whether `pt` suffices in
+practice is an open question below.
+
+Deployments predating that karg boot `intel_iommu=on amd_iommu=on`
+alone — translated mode — and must be rebased onto a current image
+before GDS can work at all.
+
+#### Open questions
+
+- **Does the registry key alone unblock `cuFileDriverOpen`?** Unverified.
+  Module parameters apply only on driver load, so confirmation needs a
+  reboot onto an image carrying R29.1. The failure mode observed so far
+  reports "nvidia-fs driver is not loaded" regardless of `p2pdma`
+  availability, so the error text alone does not distinguish a missing
+  module from a missing registry key.
+- **Is `iommu=pt` enough?** `gdscheck -p` warns for `iommu=on/pt` without
+  distinguishing the two, so passthrough carries no vendor guarantee.
+  The kernel side is not the risk: `drivers/pci/p2pdma.c` contains no
+  IOMMU check at all, so the historical "no P2P while an IOMMU is on"
+  gate is gone. Any remaining exposure is in NVIDIA's driver or
+  `libcufile`. If R29.1 verification fails, `iommu=off` is the first
+  thing to try — but it costs the VFIO GPU passthrough capability that
+  karg exists for (S9), so the trade is deliberate, not a default.
+- **KASLR.** NVIDIA notes NVMe P2PDMA "can fail on x86_64 platforms when
+  KASLR is enabled", with `nokaslr` as the workaround. The image boots
+  with KASLR active. Disabling it image-wide is a security regression and
+  should be a last resort, tried only if R29.1 verification fails.
+- **Filesystem coverage.** `p2pdma` supports ext4 and XFS on NVMe. The
+  root filesystem is btrfs and qualifies for neither `p2pdma` nor `nvfs`;
+  GDS applies only to the XFS volume on the second NVMe. Whether the
+  consuming project's data lives there is its own question to answer.
+
 ## Out of scope
 
+- **GDS userspace**: `libcufile`, `libcufile_rdma`, and `gdscheck` are
+  CUDA toolkit components. They install with CUDA in the consuming
+  environment (pip wheel or userbox); the image provides only the
+  kernel module (S29).
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
   provides system-wide defaults via `/etc/skel/`, `/etc/xdg/`, and
   `/etc/profile.d/`. Users override in `~/.config/`.

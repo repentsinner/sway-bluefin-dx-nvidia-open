@@ -387,12 +387,25 @@ cat > /etc/systemd/user.conf.d/memlock.conf <<'EOF'
 DefaultLimitMEMLOCK=infinity
 EOF
 
-# Enable Resizable BAR — lets the NVIDIA driver map full VRAM over PCIe
-# instead of a 256 MiB sliding window. Required for efficient GPUDirect RDMA.
-# UEFI must also have "Above 4G Decoding" and "Resizable BAR" enabled.
+# BAR1 configuration for GPUDirect RDMA (S20) and GPUDirect Storage (S29).
+#
+# Resizable BAR lets the NVIDIA driver map full VRAM over PCIe instead of a
+# 256 MiB sliding window. UEFI must also have "Above 4G Decoding" and
+# "Resizable BAR" enabled.
+#
+# Static BAR1 maps the whole framebuffer into BAR1 up front, which is what
+# lets the kernel's PCI P2PDMA allocator hand NVMe the GPU's BAR1 addresses
+# for cuFile transfers. It depends on resizable BAR rather than conflicting
+# with it: it engages only when BAR1 can map all of VRAM once, so at the
+# 256 MiB default it would fail driver init.
+#
+# Value 2 is AUTO, which reserves BAR1 for other expected mappings —
+# GPUDirect RDMA's among them. Value 1 (ENABLE) ignores those and risks
+# BAR1 exhaustion later.
 mkdir -p /etc/modprobe.d
 cat > /etc/modprobe.d/nvidia-rebar.conf <<'EOF'
 options nvidia NVreg_EnableResizableBar=1
+options nvidia NVreg_RegistryDwords="RMForceStaticBar1=2"
 EOF
 
 # Allow non-root users to access GPU performance counters — required for
