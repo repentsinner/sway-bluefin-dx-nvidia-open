@@ -1238,7 +1238,7 @@ its token to plaintext `hosts.yml`.
 
 ### S29: GPUDirect Storage
 
-*Status: in progress*
+*Status: complete — verified 2026-08-03*
 
 #### Problem
 
@@ -1448,34 +1448,71 @@ despite `NVreg_RestrictProfilingToAdminUsers=0` in `/etc/modprobe.d/`.
 Anything added to `/etc/modprobe.d/` for a module the initramfs loads is
 silently ineffective. Check `/proc/driver/nvidia/params`, not the file.
 
-#### Open questions
+#### Verification
 
-- **Does the registry key alone unblock `cuFileDriverOpen`?** Still
-  unverified. The first attempt shipped the key via `modprobe.d`, where
-  it never reached the driver (R29.3), so that reboot tested nothing:
-  `gdscheck -p` still reported `NVMe P2PDMA: Unsupported` and
-  `/proc/driver/nvidia/params` still showed `RegistryDwords: ""`. The
-  karg form has not yet been through a boot. Note the failure mode
-  reports "nvidia-fs driver is not loaded" whether `p2pdma` is
-  unavailable or merely unconfigured, so the error text alone proves
-  nothing — read `/proc/driver/nvidia/params` to confirm the parameter
-  arrived before drawing conclusions from a failure.
-- **Is `iommu=pt` enough?** `gdscheck -p` warns for `iommu=on/pt` without
-  distinguishing the two, so passthrough carries no vendor guarantee.
-  The kernel side is not the risk: `drivers/pci/p2pdma.c` contains no
-  IOMMU check at all, so the historical "no P2P while an IOMMU is on"
-  gate is gone. Any remaining exposure is in NVIDIA's driver or
-  `libcufile`. If R29.1 verification fails, `iommu=off` is the first
-  thing to try — but it costs the VFIO GPU passthrough capability that
-  karg exists for (S9), so the trade is deliberate, not a default.
-- **KASLR.** NVIDIA notes NVMe P2PDMA "can fail on x86_64 platforms when
-  KASLR is enabled", with `nokaslr` as the workaround. The image boots
-  with KASLR active. Disabling it image-wide is a security regression and
-  should be a last resort, tried only if R29.1 verification fails.
-- **Filesystem coverage.** `p2pdma` supports ext4 and XFS on NVMe. The
-  root filesystem is btrfs and qualifies for neither `p2pdma` nor `nvfs`;
-  GDS applies only to the XFS volume on the second NVMe. Whether the
-  consuming project's data lives there is its own question to answer.
+Confirmed working on 2026-08-03, kernel 7.1.5-101, driver 610.43.03.
+
+The driver registered BAR1 with the kernel P2PDMA layer —
+`/sys/bus/pci/devices/0000:41:00.0/p2pmem/` exists, which can only
+happen past both gates in `uvm_devmem.c`, so AUTO did engage static
+BAR1 and write-combine is off. `/proc/driver/nvidia/params` reads
+`RegistryDwords: "RMForceStaticBar1=2;RmForceDisableIomapWC=1"`,
+`EnableResizableBar: 1`, `RmProfilingAdminOnly: 0`.
+
+End-to-end transfers with `allow_compat_mode: false`, so a fallback
+would error rather than report success:
+
+| Test (8 GiB, 4 MiB IO, 8 threads, XFS on NVMe) | Result |
+|---|---|
+| `gdsio -x 0 -I 0` (read) | `XferType: GPUD` 3.266 GiB/s |
+| `gdsio -x 0 -I 1` (write) | `XferType: GPUD` 3.005 GiB/s |
+| `gdsio -x 1 -I 0` (CPU control) | `XferType: CPUONLY` 3.269 GiB/s |
+
+##### Do not use gdscheck as the acceptance test
+
+`gdscheck -p` reports `NVMe : compat` on a working configuration. Its
+storage rows describe the `nvidia-fs` path, which this image
+deliberately does not have. A reviewer following it would conclude the
+feature failed. The signals that mean something are the `p2pmem/`
+directory and `gdsio` reporting `XferType: GPUD`.
+
+`gdscheck` remains useful for the GPU and platform rows, and its
+`iommu=on/pt` warning is worth reading — but that warning did not
+predict failure here.
+
+##### The storage device is the bottleneck, not the topology
+
+GPUD and CPU paths measure the same because the drive is saturated,
+not because P2PDMA is inactive. The XFS volume sits on
+`0000:22:00.0`, a Samsung PM981-class part whose link maxes at
+Gen3 x4 (8 GT/s) ≈ 3.5 GB/s; measured throughput is at that ceiling.
+The Gen4 980 PRO on `0000:21:00.0` is the boot drive and carries
+btrfs, which GDS cannot use.
+
+The value of GDS here is therefore not peak throughput but that the
+bytes never traverse host RAM or CPU cores. Raising the ceiling means a
+Gen4/Gen5 part on the data volume — not RAID0, which NVIDIA does not
+support with p2pdma, and not slot changes.
+
+#### Resolved questions
+
+- **Is `iommu=pt` enough?** Yes. Verified working with
+  `intel_iommu=on amd_iommu=on iommu=pt` and KASLR active. NVIDIA's
+  `iommu=on/pt` warning and the KASLR known-issue both proved
+  non-blocking on this platform, so neither `iommu=off` nor `nokaslr`
+  is needed — and the S9 passthrough capability is retained.
+- **Filesystem coverage.** Unchanged and still a real constraint: GDS
+  applies only to the XFS volume. The btrfs root qualifies for neither
+  `p2pdma` nor `nvfs`.
+- **Same-root-complex co-location.** Not worth pursuing. `0000:40` has
+  exactly two root ports wired to slots — the GPU and the ConnectX-6 —
+  with `07.1`/`08.1` leading to AMD internal functions, so co-locating
+  an NVMe means displacing the NIC and the GPUDirect RDMA co-location
+  S20 wants. It would not change the mapping class either:
+  `PCI_P2PDMA_MAP_BUS_ADDR` needs a common upstream bridge, i.e. a PCIe
+  switch, and separate root ports under one host bridge still yield
+  `THRU_HOST_BRIDGE`. Bifurcation creates root ports, not a switch.
+  NUMA is moot — single node, `numa_node=-1` on every device.
 
 ## Out of scope
 
