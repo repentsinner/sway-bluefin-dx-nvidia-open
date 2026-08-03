@@ -1262,6 +1262,10 @@ defeats the purpose; the other two are real DMA paths:
 | `nvfs` | `nvidia-fs.ko` | all VFS filesystems, distributed FS, NFS over RDMA |
 | `p2pdma` | none | ext4/XFS on NVMe; no RAID0 or multipath |
 
+The split is by storage type, not by preference: `p2pdma` covers NVMe
+block devices and nothing else, so any distributed filesystem is
+`nvfs`-only and out of reach here (see Deferred, below).
+
 This image uses `p2pdma`. As of CUDA 12.8 it drives GDS through the
 upstream NVMe driver and the kernel's PCI P2PDMA layer; NVIDIA states it
 "eliminate[s] the need for custom MOFED NVMe patches and nvidia-fs.ko to
@@ -1309,9 +1313,10 @@ Traffic therefore crosses the root complex by design, which bounds
 achievable bandwidth below what a shared-switch topology would give.
 That is a performance ceiling, not a functional blocker.
 
-#### Rejected: building nvidia-fs.ko
+#### Deferred: building nvidia-fs.ko
 
-Compiling nvidia-fs into the image was prototyped and rejected. It is
+Compiling nvidia-fs into the image was prototyped and deferred, not
+ruled out — see "Network filesystems will require it" below. It is
 buildable — the module needs one driver header (`nv-p2p.h`, public
 because the image runs the *open* driver), symbol CRCs read from the
 shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
@@ -1325,8 +1330,25 @@ shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
 - The result is unsigned. ublue signs its akmods with a key this repo
   does not hold, so the module loads only with Secure Boot disabled.
 
-`p2pdma` avoids all three. Revisit only if R29.1 fails verification, or
-if a workload needs a filesystem `p2pdma` does not cover.
+`p2pdma` avoids all three, and covers the local-NVMe workload this
+section was raised for.
+
+##### Network filesystems will require it
+
+`p2pdma` is restricted to NVMe block devices. NVIDIA scopes the
+exemption explicitly: nvidia-fs.ko "is not necessary for the case of
+mounts of NVMe (local or with NVIDIA DOCA SNAP) for cuFile in CUDA
+version 12.8 and higher" — NVMe only, nothing else.
+
+GDS against a distributed filesystem — Lustre, WekaFS, EXAScaler, GPFS,
+or NFS over RDMA — therefore still needs the `nvfs` path and
+`nvidia-fs.ko`. Nothing in S29 delivers that, and no configuration of
+what S29 does deliver reaches it. When such a workload arrives this
+section reopens with the three costs above intact, plus probably a
+fourth: RDMA-backed distributed clients are likely to want the same
+DOCA/MOFED stack that blocks S20, which would couple the two. That
+coupling is inferred from the shared DOCA dependency rather than
+verified, and should be checked before it is planned around.
 
 #### R29.1: Static BAR1 for PCI P2PDMA
 
