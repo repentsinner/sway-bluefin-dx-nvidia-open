@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.13](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.12...v0.4.13) (2026-08-03)
+
+
+### Features
+
+* **nvidia:** allow non-admin access to GPU performance counters ([#61](https://github.com/repentsinner/tilefin-nvidia-open/issues/61)) ([39f6d2b](https://github.com/repentsinner/tilefin-nvidia-open/commit/39f6d2b1867c07774164a5ba0a4368c61be38bb3))
+* **nvidia:** enable GPUDirect Storage via PCI P2PDMA (S29) ([#65](https://github.com/repentsinner/tilefin-nvidia-open/issues/65)) ([5744a81](https://github.com/repentsinner/tilefin-nvidia-open/commit/5744a81d2a04e35ef222706aca0628dd0d4e5585))
+
 ## [0.4.12](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.11...v0.4.12) (2026-06-09)
 
 
