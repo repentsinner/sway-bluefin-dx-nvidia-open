@@ -431,10 +431,10 @@ tools — added image size and attack surface for no benefit.
 
 ### Design
 
-The image rebases onto `ghcr.io/ublue-os/base-nvidia:gts`, the lowest
-Universal Blue layer that includes Nvidia drivers. This image ships no
-desktop environment, no display manager, and no application-layer
-packages.
+The image rebases onto `ghcr.io/ublue-os/base-nvidia`, the lowest
+Universal Blue layer that includes Nvidia drivers. It ships no desktop
+environment, no display manager, and no application-layer packages.
+§spec:base-image records which tag the image tracks.
 
 Changes from the previous base:
 
