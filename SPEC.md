@@ -1545,6 +1545,96 @@ support with p2pdma, and not slot changes.
   `THRU_HOST_BRIDGE`. Bifurcation creates root ports, not a switch.
   NUMA is moot — single node, `numa_node=-1` on every device.
 
+## Cross-release bootc switch §spec:cross-release-switch
+
+*Status: in progress*
+
+### Problem
+
+`bootc switch` onto this image from Bluefin `:stable` left the machine
+with no graphical login and no system bus. Observed on mr-plywood,
+2026-08-15, switching from `bluefin-nvidia-open:stable` (Fedora 44)
+onto this image while it tracked `base-nvidia:gts` (Fedora 43) — a
+switch backwards across a major release.
+
+The image has since moved to `:latest` (§spec:base-image), so the same
+switch is now Fedora 44 onto Fedora 44. Whether that alone resolves
+this is untested.
+
+`/etc/selinux/targeted` carries the label `semanage_store_t` where
+`file_contexts` maps that path to `selinux_config_t`. Nothing can
+traverse the policy store, and three failures follow on every boot:
+
+- `dbus-broker` exits 1 on
+  `Access denied in /etc/selinux/targeted/contexts/dbus_contexts`,
+  retries to its start limit, and leaves the system bus down. Without
+  the bus, NetworkManager does not start either, so the machine also
+  drops off the network.
+- `systemd-logind` logs
+  `Failed to initialize SELinux labeling handle: Permission denied`
+  and fails to start.
+- greetd, in `xdm_t`, is denied `search` on the directory, so
+  `pam_selinux` reports `Unable to get valid context` and
+  `pam_open_session` returns `SESSION_ERR`. The greeter accepts the
+  password and returns to its own prompt.
+
+Authentication itself succeeds throughout — `pam_unix` opens the
+session before the session stack fails. A permissive boot confirms the
+account is complete: every consequential denial names
+`semanage_store_t`, across `greetd`, `dbus-broker`, `systemd-logind`,
+`systemd-resolved`, `systemd-localed`, `systemd-hostnamed`,
+`sshd-session` and `sshd-auth`. No second cause hides behind the first.
+
+### Established
+
+- The image is not the source. `/usr/etc/selinux/targeted` in the same
+  deployment carries the correct label, and a machine installed from
+  this image and upgraded within it does not show the defect.
+- The `file_contexts` rules are byte-identical between Fedora 43 and
+  44, so a changed policy rule does not explain the difference.
+- `semanage.conf` sets `store-root=/etc/selinux`, making
+  `/etc/selinux/targeted` the libsemanage store directory.
+  `semanage_store_t` is the type libsemanage places on a store, while
+  `file_contexts` reserves it for `active`, `tmp` and `previous`. The
+  two conventions disagree about this path.
+- `restorecon` reports relabelling the directory, and the label reads
+  `semanage_store_t` immediately afterwards — from a shell, and from a
+  oneshot unit ordered ahead of every consumer. The repair does not
+  hold.
+- The merged `/etc` is written by `ostree-finalize-staged.service` from
+  its `ExecStop`, during the shutdown preceding first boot. Until then
+  the staged deployment holds the image's own `/etc`, carrying neither
+  the local accounts nor the defect, so no pre-boot repair is possible.
+
+### Open questions
+
+- What re-applies `semanage_store_t` after `restorecon`? A pass
+  relabelling `mtab`, `os-release`, `resolv.conf`, `credstore`,
+  `pam.d`, `polkit-1/rules.d` and `selinux/targeted` lands within one
+  coarse-clock tick early in boot, but the writer is unidentified and a
+  boot-ordered `restorecon` does not survive it.
+- Does this reproduce on a same-release switch? Now that
+  §spec:base-image tracks `:latest`, the next attempt answers this
+  directly: a clean switch implicates the release gap, a repeat rules
+  it out and leaves the relabel writer as the whole story.
+
+### Design
+
+Unresolved, and deliberately unimplemented. A boot-time `restorecon`
+unit was tried on the affected machine and did not hold, so shipping
+one would encode a repair the evidence does not support.
+
+Retesting the switch on the current image comes first, since the
+release gap is the one variable that changed and costs nothing to
+retry.
+
+Install media (§spec:install-media) avoids the failure rather than
+patching it: a fresh install writes the image's own `/etc` with no
+merge from a foreign release. That is the supported path for a new
+machine until this is understood. Booting with `enforcing=0` restores
+a working system on a machine already in this state, at the cost of
+running without SELinux.
+
 ## Out of scope §spec:out-of-scope
 
 *Status: complete*
