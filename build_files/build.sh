@@ -36,7 +36,7 @@ WAYLAND_CORE=(
     hyprlock                  # Lock screen
     hypridle                  # Idle daemon
     mako                      # Notifications
-    swww                      # Wallpaper
+    swaybg                    # Wallpaper (Fedora; swww is unpackaged)
 )
 
 WAYLAND_CLIPBOARD=(
@@ -118,7 +118,7 @@ VIRTUALIZATION=(
 #------------------------------------------------------------------------------
 
 COPR_REPOS=(
-    solopasha/hyprland              # hyprlock, hypridle, swww, cliphist (used with Niri too)
+    craftidore/wayblueorg-hyprland  # hyprlock, hypridle (used with Niri too)
     leloubil/wl-clip-persist
     pgaskin/looking-glass-client
 )
@@ -200,7 +200,7 @@ dnf5 install -y code
 # Replaces the COPR niri package until upstream merges the PR
 # https://github.com/repentsinner/niri-desaturate
 echo "Installing niri-desaturate..."
-curl -Lo /tmp/niri-desaturate.rpm "https://github.com/repentsinner/niri-desaturate/releases/download/v25.11.0.1/niri-25.11.0.1-1.x86_64.rpm"
+curl -Lo /tmp/niri-desaturate.rpm "https://github.com/repentsinner/niri-desaturate/releases/download/v26.04.0.1/niri-26.04.0.1-1.x86_64.rpm"
 dnf5 install -y --allowerasing /tmp/niri-desaturate.rpm
 rm -f /tmp/niri-desaturate.rpm
 

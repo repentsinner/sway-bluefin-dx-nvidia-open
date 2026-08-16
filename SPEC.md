@@ -14,7 +14,14 @@ installers — not in the image.
 
 ## Base image
 
-`ghcr.io/ublue-os/base-nvidia:gts`
+`ghcr.io/ublue-os/base-nvidia:latest`
+
+The image tracks `:latest` (current Fedora) rather than `:gts`
+(Fedora N-1). The hyprland-ecosystem COPRs that supply `hyprlock`
+and `hypridle` stopped building for N-1, leaving no source for two
+packages the lock screen and idle management depend on, and
+`cliphist` reaches Fedora proper only from 44. Tracking `:latest`
+also makes a `bootc switch` from Bluefin a same-release operation.
 
 The base image provides Fedora (bootc/OSTree), Nvidia open kernel
 modules, nvidia-container-toolkit, Podman, distrobox, just/ujust,
@@ -89,7 +96,7 @@ The image provides a complete Wayland desktop environment:
 - **Lock screen**: Hyprlock with system config at `/etc/xdg/hypr/`.
 - **Idle management**: Hypridle with system config at `/etc/xdg/hypr/`.
 - **Notifications**: Mako. No XDG fallback path — uses `/etc/skel/`.
-- **Wallpaper**: swww.
+- **Wallpaper**: swaybg.
 - **Clipboard**: wl-clipboard, wl-clip-persist, cliphist.
 - **Screenshots**: grim, slurp, wf-recorder.
 - **App launcher**: Fuzzel.
