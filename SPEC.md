@@ -55,7 +55,7 @@ Software that runs on demand with no session dependency belongs
 elsewhere:
 
 | Delivery | For |
-|---|---|
+| --- | --- |
 | **Userbox** (distrobox, pre-built OCI) | CLI tools, shell utilities, dev toolchains |
 | **Flatpak** | Sandboxed GUI apps |
 | **Native installer** (`~/.local/bin`) | Self-updating vendor CLIs (e.g., Claude Code) |
@@ -207,7 +207,7 @@ the Containerfile and CI. This repo covers only the image-side changes.
 Three repos, three concerns:
 
 | Repo | Contains | Lifecycle |
-|---|---|---|
+| --- | --- | --- |
 | **tilefin-nvidia-open** | OS image, ujust recipes, shell aliases, skel default | Rare |
 | **repentsinner/userbox** | Containerfile for user tools image | Frequent |
 | **chezmoi dotfiles** | `.ini`, systemd unit, shell config | Personal |
@@ -291,7 +291,7 @@ recipe files. It contains no recipes of its own. The image build
 installs it alongside the recipe files it references:
 
 | Source file | Installed as | Content |
-|---|---|---|
+| --- | --- | --- |
 | `build_files/60-custom.just` | `60-custom.just` | Import shim |
 | `build_files/tilefin.just` | `61-tilefin.just` | General recipes (`setup-user`) |
 | `build_files/bmd.just` | `62-bmd.just` | Blackmagic DeckLink recipes |
@@ -526,7 +526,7 @@ The result is four user-facing problems:
 Two update channels serve different stability preferences:
 
 | Channel | Tag | Builds on | Contains |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `latest` | `latest`, `latest.v0.4.4.20260318` | Daily cron, push to main | Latest main + whatever upstream shipped that day |
 | `stable` | `stable`, `0.4.4` | release-please tag push (`v*`) | Exactly the code at the release tag, built against current upstream |
 
@@ -555,7 +555,7 @@ separator: `latest.v0.4.4.20260318`.
 
 The push-to-GHCR and cosign-signing steps gate on:
 
-```
+```text
 github.event_name != 'pull_request' && (
   github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
   startsWith(github.ref, 'refs/tags/v')
@@ -618,7 +618,7 @@ bootc-image-builder (BIB) produces installable disk images from the
 container image. Two ISO types serve different use cases:
 
 | Type | Config | Network | Use case |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `iso` (bootc-installer) | `disk_config/iso.toml` | Not required | Offline install from USB/Ventoy. Image embedded in ISO. |
 | `anaconda-iso` | `disk_config/anaconda-iso.toml` | Required | Interactive Anaconda installer. Pulls image from GHCR at install time. |
 
@@ -726,7 +726,7 @@ Rivermax hard-requires DOCA-Host (v2.10.0-0.5.3) on the host. Three
 DOCA profiles are compatible:
 
 | Profile | Scope |
-|---|---|
+| --- | --- |
 | `doca-roce` | Minimal Ethernet/RoCE kernel drivers (replaces `MLNX_EN`) |
 | `doca-ofed` | DOCA-OFED drivers and tools (replaces `MLNX_OFED`) |
 | `doca-all` | Full DOCA-Host libraries |
@@ -758,7 +758,7 @@ it as of this version.
 Linux offers two mechanisms for an RDMA NIC to access GPU memory:
 
 | | nvidia-peermem (legacy) | DMA-BUF (standard) |
-|---|---|---|
+| --- | --- | --- |
 | Verbs call | `ibv_reg_mr()` on GPU pointer | `ibv_reg_dmabuf_mr()` on dma-buf fd |
 | Kernel mechanism | Proprietary NVIDIA peer memory API registered into IB verbs | Standard Linux `dma-buf` fd sharing (kernel 5.12+) |
 | NIC driver requirement | MLNX_OFED or DOCA-OFED | Inbox `rdma-core` sufficient |
@@ -781,7 +781,7 @@ returns `-EINVAL` on load.
 Rivermax userspace runs in a container. The host provides kernel
 drivers and `nvidia-peermem`.
 
-```
+```text
 Host (tilefin-nvidia-open):
   ├─ doca-roce or doca-ofed kernel drivers (replaces inbox mlx5)
   ├─ nvidia-peermem.ko (rebuilt with DOCA-OFED headers)
@@ -1262,7 +1262,7 @@ libcufile has three modes. `compat` bounces through host memory and
 defeats the purpose; the other two are real DMA paths:
 
 | Mode | Kernel module | Storage |
-|---|---|---|
+| --- | --- | --- |
 | `nvfs` | `nvidia-fs.ko` | all VFS filesystems, distributed FS, NFS over RDMA |
 | `p2pdma` | none | ext4/XFS on NVMe; no RAID0 or multipath |
 
@@ -1494,7 +1494,7 @@ End-to-end transfers with `allow_compat_mode: false`, so a fallback
 would error rather than report success:
 
 | Test (8 GiB, 4 MiB IO, 8 threads, XFS on NVMe) | Result |
-|---|---|
+| --- | --- |
 | `gdsio -x 0 -I 0` (read) | `XferType: GPUD` 3.266 GiB/s |
 | `gdsio -x 0 -I 1` (write) | `XferType: GPUD` 3.005 GiB/s |
 | `gdsio -x 1 -I 0` (CPU control) | `XferType: CPUONLY` 3.269 GiB/s |

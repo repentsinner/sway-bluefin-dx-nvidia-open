@@ -5,7 +5,7 @@ A custom [bootc](https://github.com/bootc-dev/bootc) image built on [Universal B
 ## Opinionated Defaults
 
 | Choice | Rationale |
-|--------|-----------|
+| -------- | ----------- |
 | **base-nvidia base** | Minimal base with Nvidia drivers. No GNOME, Homebrew, Docker, or other packages to strip. Every installed package is an explicit choice. |
 | **Niri compositor** | Scrollable tiling, clean fractional scaling, official Fedora package. |
 | **Wayland-only** | No XWayland/X11. Future-forward graphics stack. Apps that don't support Wayland won't work. |
@@ -25,9 +25,11 @@ A custom [bootc](https://github.com/bootc-dev/bootc) image built on [Universal B
 ## Key Features
 
 ### Excellent High-DPI Support
+
 Niri provides clean fractional scaling without the pixel-repetition artifacts seen in some other compositors such as Hyprland. Proper `wp-fractional-scale-v1` protocol support ensures crisp text and UI elements on modern displays.
 
 ### Scrollable Tiling
+
 Niri's unique scrollable/infinite canvas workflow - windows tile horizontally and you scroll through them, rather than cramming everything onto a fixed screen. Great for ultrawide monitors and focus-oriented workflows.
 
 ## What This Image Provides
@@ -35,6 +37,7 @@ Niri's unique scrollable/infinite canvas workflow - windows tile horizontally an
 The base image (`base-nvidia:gts`) provides Fedora, Nvidia open kernel modules, Podman, distrobox, just/ujust, Flatpak with Flathub, and media codecs. It ships no desktop environment. This image adds:
 
 ### Wayland Desktop Environment
+
 - **Status Bar**: Waybar
 - **Application Launcher**: Fuzzel
 - **Terminal**: Ptyxis (GTK4, GPU-accelerated, native container integration)
@@ -49,17 +52,20 @@ The base image (`base-nvidia:gts`) provides Fedora, Nvidia open kernel modules, 
 - **Utilities**: wl-clipboard, cliphist, pamixer, brightnessctl
 
 ### Display Manager
+
 - Uses **greetd** with **tuigreet** instead of GDM
 - Remembers your last session choice
 - Properly configured for OSTree-based systems using sysusers.d and tmpfiles.d
 - Full Nvidia environment variables configured
 
 ### Theming
+
 - Default GTK theme set to **adw-gtk3-dark** for both GTK 3 and GTK 4
 - Dark theme preference enabled by default
 - Configuration applied via `/etc/skel` for all new users
 
 ### System Configuration
+
 - **Polkit agent**: lxpolkit configured to autostart with the compositor
 - **Portals**: xdg-desktop-portal-gtk for proper Wayland integration
 - **Input settings**:
@@ -75,24 +81,28 @@ The base image (`base-nvidia:gts`) provides Fedora, Nvidia open kernel modules, 
 Based on the current setup, any replacement compositor must support:
 
 ### Core Requirements
+
 - **Nvidia GPU compatibility**: Must work with proprietary Nvidia drivers
 - **Wayland-only**: Pure Wayland, no XWayland/X11 compatibility (X11-only apps will not work)
 - **HiDPI scaling**: Proper fractional scaling and readable text/UI elements
 - **OSTree compatibility**: Works with immutable/atomic OS structure
 
 ### Integration Requirements
+
 - **Display Manager**: Works with greetd/tuigreet ✓
 - **Desktop Portals**: Compatible with xdg-desktop-portal-gtk ✓
 - **Session Management**: Launched via Wayland session files ✓
 - **Polkit Integration**: Supports polkit agents for privilege escalation ✓
 
 ### User Experience
+
 - **Tiling Management**: Automatic window tiling with keyboard controls
 - **Multi-monitor**: Robust multi-display support
 - **Configuration**: Declarative config files (no GUI-only settings)
 - **Input Remapping**: Custom keyboard layouts (e.g., Caps→Ctrl)
 
 ### Development Workflow
+
 - VS Code (host application, attaches to containers)
 - Container tooling (Podman, distrobox — from base image)
 - Fish shell
@@ -112,6 +122,7 @@ sudo reboot
 ### WireGuard VPN
 
 WireGuard tools are pre-installed. Configure VPN connections via NetworkManager:
+
 - Use `nmcli` for CLI configuration
 - Or install `nm-connection-editor` for GUI setup
 
@@ -126,6 +137,7 @@ ujust setup-user
 ```
 
 An interactive menu lets you select from:
+
 - **Native CLI tools**: Claude Code, uv, mise (all selected by default)
 - **Flatpak apps**: Firefox, Bitwarden, Slack, Discord, Signal, Proton VPN
 - **Userbox container**: exports CLI tools (`gh`, `chezmoi`, `direnv`,
@@ -150,6 +162,7 @@ After `chezmoi apply`, the process is self-sustaining.
 ## Configuration
 
 ### Niri
+
 Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://github.com/YaLTeR/niri/wiki) for configuration options.
 
 ### Key Bindings
@@ -161,7 +174,7 @@ Customize by editing `~/.config/niri/config.kdl`. See the [Niri wiki](https://gi
 On an immutable system, software belongs in the right layer:
 
 | Method | For | Example |
-|--------|-----|---------|
+| -------- | ----- | --------- |
 | **System image** | Session infrastructure, system services | Niri, greetd, libvirt |
 | **Flatpak** | Sandboxed GUI apps | `flatpak install --user flathub org.gnome.Evince` |
 | **Distrobox** | CLI tools, dev toolchains, language runtimes | Userbox (see below), or `distrobox create --image fedora:latest` |
@@ -174,9 +187,11 @@ ujust recipes are baked into the system image (`/usr/share/ublue-os/just/`). The
 This project has evolved through several compositors seeking the best HiDPI and tiling experience:
 
 ### Sway → Hyprland
+
 Sway lacks `wp-fractional-scale-v1` support, limiting it to integer-only scaling (1x, 2x). This is unusable on modern HiDPI displays where users need 1.25x or 1.5x scaling.
 
 ### Hyprland → Niri (Current Default)
+
 While Hyprland solved the fractional scaling protocol support, it has two significant issues:
 
 1. **Scaling artifacts** - visible as repeated columns/rows of pixels at certain fractional scale factors
