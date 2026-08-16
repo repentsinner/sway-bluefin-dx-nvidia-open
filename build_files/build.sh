@@ -82,7 +82,7 @@ SYSTEM_UTILS=(
     greetd
     greetd-tuigreet
     gum                       # TUI menus for ujust recipes
-    gnome-keyring             # Secret Service (org.freedesktop.secrets) for gh/secret-tool (S27)
+    gnome-keyring             # Secret Service (org.freedesktop.secrets) for gh/secret-tool (§spec:credential-storage)
     gnome-keyring-pam         # Activates the keyring auto-unlock lines already in /etc/pam.d/greetd
 )
 
@@ -130,7 +130,7 @@ COPR_REPOS=(
 systemctl enable podman.socket
 systemctl enable rpm-ostreed-automatic.timer  # Auto-stage image upgrades
 
-# Production-mode update lock (S25): drop-in gates auto-staging on the
+# Production-mode update lock (§spec:production-mode): drop-in gates auto-staging on the
 # presence of /etc/tilefin/production-mode. The drop-in ships read-only
 # in /usr/lib/; the flag file is mutable per-machine in /etc/.
 install -Dm644 /ctx/rpm-ostreed-automatic-production.conf \
@@ -267,13 +267,13 @@ mkdir -p /etc/xdg/hypr
 cp /ctx/hyprlock.conf /etc/xdg/hypr/hyprlock.conf
 cp /ctx/hypridle-niri.conf /etc/xdg/hypr/hypridle.conf
 
-# hypridle runs as a --user service (S26 R26.3) so the re-arm timer can
+# hypridle runs as a --user service (§spec:auto-suspend §spec:hypridle-user-service) so the re-arm timer can
 # restart it. niri starts it via spawn-at-startup; not enabled here
 # because niri --session does not activate graphical-session.target.
 install -Dm644 /ctx/hypridle.service /usr/lib/systemd/user/hypridle.service
 
 # Weekday 18:00 timer re-arms hypridle at the business-hours boundary
-# (S26 R26.4). Enabled for all users; timers.target is reached by the
+# (§spec:auto-suspend §spec:weekday-rearm). Enabled for all users; timers.target is reached by the
 # user manager independent of the graphical session.
 install -Dm644 /ctx/tilefin-hypridle-rearm.service /usr/lib/systemd/user/tilefin-hypridle-rearm.service
 install -Dm644 /ctx/tilefin-hypridle-rearm.timer /usr/lib/systemd/user/tilefin-hypridle-rearm.timer
@@ -431,8 +431,8 @@ EOF
 #
 # RMForceStaticBar1=2: maps the whole framebuffer into BAR1 up front, so
 #   the kernel's PCI P2PDMA allocator can hand NVMe the GPU's BAR1
-#   addresses for cuFile transfers (S29). 2 is AUTO, which reserves BAR1
-#   for other expected mappings — GPUDirect RDMA's among them (S20). 1
+#   addresses for cuFile transfers (§spec:gpudirect-storage). 2 is AUTO, which reserves BAR1
+#   for other expected mappings — GPUDirect RDMA's among them (§spec:rivermax). 1
 #   (ENABLE) ignores those and risks BAR1 exhaustion. Static BAR1 engages
 #   only when BAR1 can map all of VRAM once; at AUTO it declines rather
 #   than failing driver init.
@@ -483,7 +483,7 @@ EOF
 # initramfs below. Kept separate from the kargs above so that a dracut
 # failure cannot regress parameters that already work.
 cat > /usr/lib/modprobe.d/nvidia-tilefin.conf <<'EOF'
-# GPUDirect Storage (S29): static BAR1, not write-combined, so the driver
+# GPUDirect Storage (§spec:gpudirect-storage): static BAR1, not write-combined, so the driver
 # registers BAR1 with the kernel PCI P2PDMA layer.
 options nvidia NVreg_RegistryDwords="RMForceStaticBar1=2;RmForceDisableIomapWC=1"
 EOF
@@ -504,7 +504,7 @@ cp /ctx/bmd.just /usr/share/ublue-os/just/62-bmd.just
 # The base image's initramfs predates this layer, so it carries the base's
 # /usr/lib/modprobe.d and none of the files written above. nvidia.ko loads
 # from the initramfs, seconds before switch-root, so without this step
-# nvidia-tilefin.conf is silently ignored (S29 R29.3).
+# nvidia-tilefin.conf is silently ignored (§spec:gpudirect-storage §spec:nvidia-params-as-kargs).
 #
 # Invocation mirrors ublue-os/main build_files/initramfs.sh so the result
 # matches what the base image would have produced.

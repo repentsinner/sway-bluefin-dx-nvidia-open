@@ -3,7 +3,7 @@ Description=hypridle idle daemon (Tilefin)
 Documentation=https://wiki.hypr.land/Hypr-Ecosystem/hypridle/
 # Started imperatively by niri spawn-at-startup, not by target activation:
 # niri --session imports the environment but does not activate
-# graphical-session.target. See SPEC.md S26 / R26.3. PartOf is declared so
+# graphical-session.target. See SPEC.md §spec:auto-suspend / §spec:hypridle-user-service. PartOf is declared so
 # the daemon is torn down with the graphical session if that target is
 # ever activated; it does not start the unit on its own.
 PartOf=graphical-session.target

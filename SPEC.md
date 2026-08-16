@@ -1,6 +1,8 @@
 # SPEC: Tilefin System Image
 
-## Purpose
+## Purpose §spec:purpose
+
+*Status: complete*
 
 Tilefin is an immutable bootc/OSTree system image that provides a
 keyboard-driven Wayland desktop on Nvidia hardware. It layers the Niri
@@ -12,7 +14,9 @@ management, display manager, theming, and system services. User tools
 and development toolchains belong in distrobox containers or user-space
 installers — not in the image.
 
-## Base image
+## Base image §spec:base-image
+
+*Status: complete*
 
 `ghcr.io/ublue-os/base-nvidia:latest`
 
@@ -35,7 +39,9 @@ immediately removed or never used. Rebasing on base-nvidia eliminates
 the install-then-strip cycle, reduces image size, and makes every
 installed package an explicit choice.
 
-## Image boundary
+## Image boundary §spec:image-boundary
+
+*Status: complete*
 
 The image shall contain only software that meets at least one of:
 
@@ -49,30 +55,14 @@ Software that runs on demand with no session dependency belongs
 elsewhere:
 
 | Delivery | For |
-|---|---|
+| --- | --- |
 | **Userbox** (distrobox, pre-built OCI) | CLI tools, shell utilities, dev toolchains |
 | **Flatpak** | Sandboxed GUI apps |
 | **Native installer** (`~/.local/bin`) | Self-updating vendor CLIs (e.g., Claude Code) |
 
-## Sections
+## Niri compositor §spec:niri-compositor
 
-### S1: GNOME removal
-
-*Status: obsolete — base-nvidia ships no desktop environment*
-
-Previously required when the base image was Bluefin-DX (Silverblue).
-The base-nvidia image has no GNOME components to remove.
-
-### S2: Homebrew removal
-
-*Status: obsolete — base-nvidia ships no Homebrew integration*
-
-Previously required when the base image was Bluefin-DX. The base-nvidia
-image has no Homebrew artifacts.
-
-### S3: Niri compositor
-
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 The image installs a custom niri fork (niri-desaturate) from a GitHub
 release RPM until the desaturate window rule merges upstream.
@@ -84,9 +74,9 @@ registers the session with greetd.
 System-wide config lives at `/etc/niri/config.kdl`. Users override via
 `~/.config/niri/config.kdl`.
 
-### S4: Wayland environment
+## Wayland environment §spec:wayland-stack
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 The image provides a complete Wayland desktop environment:
 
@@ -104,9 +94,9 @@ The image provides a complete Wayland desktop environment:
 - **Desktop portal**: xdg-desktop-portal-gtk (inherited from base image;
   portals.conf selects GTK backend over GNOME).
 
-### S5: Display manager
+## Display manager §spec:display-manager
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 greetd with tuigreet provides graphical session login. The base image
 enables `getty@tty1` (console login); greetd overrides this. Config at
@@ -114,9 +104,9 @@ enables `getty@tty1` (console login); greetd overrides this. Config at
 A tmpfiles.d entry creates `/var/lib/greetd` at boot (the package's
 tmpfiles.d only sets ownership, doesn't create the directory).
 
-### S6: Desktop applications
+## Desktop applications §spec:desktop-apps
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 - **Terminal**: Ptyxis (GTK4, native distrobox integration).
 - **File manager**: Thunar with gvfs and tumbler.
@@ -127,16 +117,16 @@ tmpfiles.d only sets ownership, doesn't create the directory).
 - **Flatpaks** (installed by `ujust setup-user`, not baked into image):
   Bitwarden, Firefox, Slack.
 
-### S7: Theming
+## Theming §spec:theming
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 adw-gtk3-dark for GTK 3/4. System-wide via `/etc/gtk-{3,4}.0/`. GTK 2
 via `/etc/skel/.gtkrc-2.0`. Fonts: Fira Code, FontAwesome, Noto Emoji.
 
-### S8: System services
+## System services §spec:system-services
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 Enabled at build time:
 
@@ -145,9 +135,9 @@ Enabled at build time:
 - `greetd.service` — display manager.
 - `rpm-ostreed-automatic.timer` — auto-stage image upgrades.
 
-### S9: Virtualization
+## Virtualization §spec:virtualization
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 Full KVM/QEMU/libvirt stack for Windows VM hosting with Looking Glass
 GPU passthrough support:
@@ -159,20 +149,20 @@ GPU passthrough support:
 - Polkit rule: wheel group can manage VMs without extra groups.
 - IOMMU kernel args enabled via `bootc kargs.d`.
 
-### S10: Wayland environment config
+## Wayland environment config §spec:wayland-config
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
 - Electron apps forced to native Wayland via
   `/etc/environment.d/electron-wayland.conf`.
 - System-wide Flatpak overrides enable Wayland socket and Electron
   Wayland flags.
 
-### S11: Shell configuration
+## Shell configuration §spec:shell-config
 
-*Status: complete — PR #1, 2024-10-15*
+*Status: complete*
 
-#### R11.1: Tool aliases
+### Tool aliases §spec:tool-aliases
 
 `/etc/profile.d/tool-aliases.sh` (bash) and
 `/etc/fish/conf.d/tool-aliases.fish` (fish) provide aliases and shell
@@ -181,7 +171,7 @@ installers): bat, eza, zoxide, starship, direnv, and mise. All entries
 are guarded (`command -v` in bash, `command -sq` in fish) and silently
 skipped when the tool is absent.
 
-#### R11.2: User-local bin directory in PATH
+### User-local bin directory in PATH §spec:user-local-bin-path
 
 `/etc/profile.d/local-path.sh` (bash) and
 `/etc/fish/conf.d/local-path.fish` (fish) prepend `~/.local/bin` to
@@ -189,22 +179,23 @@ skipped when the tool is absent.
 idempotent — bash guards against duplicate entries, fish uses
 `fish_add_path`.
 
-Rationale: userbox exports (R12.4) and native installers (R12.5) place
-binaries in `~/.local/bin`. Without this PATH entry, those binaries are
-unreachable from interactive shells.
+Rationale: userbox exports (§spec:skel-userbox-ini) and native
+installers (§spec:ujust-setup-user) place binaries in `~/.local/bin`.
+Without this PATH entry, those binaries are unreachable from interactive
+shells.
 
-### S12: Userbox — move user tools to distrobox
+## Userbox — move user tools to distrobox §spec:userbox
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 The image bakes in 7 CLI tools and 1 GUI app with no session-startup
 dependencies: `gh`, `chezmoi`, `direnv`, `zoxide`, `starship`, `eza`,
 `bws`, `antigravity`. Including them causes image rebuilds for tool
 updates and blurs the boundary between OS and personal environment.
 
-#### Design
+### Design
 
 User tools move to a pre-built OCI container image consumed by
 distrobox. The container is ephemeral — recreated from the image on
@@ -216,12 +207,12 @@ the Containerfile and CI. This repo covers only the image-side changes.
 Three repos, three concerns:
 
 | Repo | Contains | Lifecycle |
-|---|---|---|
+| --- | --- | --- |
 | **tilefin-nvidia-open** | OS image, ujust recipes, shell aliases, skel default | Rare |
 | **repentsinner/userbox** | Containerfile for user tools image | Frequent |
 | **chezmoi dotfiles** | `.ini`, systemd unit, shell config | Personal |
 
-##### Bootstrap and graceful degradation
+#### Bootstrap and graceful degradation
 
 A fresh system has no chezmoi (it lives inside the userbox) and no
 userbox `.ini` (it's managed by chezmoi). This cycle breaks via three
@@ -240,7 +231,7 @@ layers of the same file, each more specific than the last:
 All shell aliases and hooks are guarded with `command -v`. A system
 with no userbox functions normally — it just lacks CLI tools.
 
-#### R12.1: Image does not contain user tools
+### Image does not contain user tools §spec:image-excludes-user-tools
 
 The image does not install `gh`, `chezmoi`, `direnv`, `zoxide`,
 `starship`, `eza`, `bat`, `bws`, or `antigravity`. No COPR repos, curl
@@ -248,21 +239,21 @@ blocks, or package arrays exist for these tools in the build script.
 Native installer tools (Claude Code, uv) are also not in the image —
 they are installed per-user by `ujust setup-user`.
 
-#### R12.2: Shell aliases degrade gracefully
+### Shell aliases degrade gracefully §spec:aliases-degrade-gracefully
 
 Every alias and shell hook in `tool-aliases.sh` is guarded with
 `command -v`. When a tool is absent (no userbox, or userbox not yet
 assembled), the alias is silently skipped. No `command not found`
 errors on a fresh system.
 
-#### R12.3: Shell hooks for both bash and fish
+### Shell hooks for both bash and fish §spec:shell-hooks-bash-fish
 
 `tool-aliases.sh` and `tool-aliases.fish` include guarded hooks
 for direnv, zoxide, and starship in both shells. Both files are
 system-wide (`/etc/profile.d/` and `/etc/fish/conf.d/`), so no
 chezmoi-managed fish config is required for these tools.
 
-#### R12.4: Skel default userbox.ini
+### Skel default userbox.ini §spec:skel-userbox-ini
 
 The image ships `/etc/skel/.config/distrobox/userbox.ini`. Every new
 user account receives a working distrobox declaration at account
@@ -287,7 +278,7 @@ Rationale: breaks the chezmoi↔userbox bootstrap cycle. Chezmoi lives
 inside the userbox, so it cannot seed its own `.ini`. The skel file
 provides a working default; chezmoi overwrites it once available.
 
-#### R12.5: ujust setup-user recipe
+### ujust setup-user recipe §spec:ujust-setup-user
 
 The `ublue-os-just` package owns `/usr/share/ublue-os/justfile` and
 imports numbered `.just` files up through `50-akmods.just`. It provides
@@ -300,7 +291,7 @@ recipe files. It contains no recipes of its own. The image build
 installs it alongside the recipe files it references:
 
 | Source file | Installed as | Content |
-|---|---|---|
+| --- | --- | --- |
 | `build_files/60-custom.just` | `60-custom.just` | Import shim |
 | `build_files/tilefin.just` | `61-tilefin.just` | General recipes (`setup-user`) |
 | `build_files/bmd.just` | `62-bmd.just` | Blackmagic DeckLink recipes |
@@ -331,7 +322,7 @@ The recipe is idempotent. Running it again updates native tools,
 skips already-installed Flatpaks, and reassembles the userbox with
 `--replace`.
 
-#### R12.6: Systemd user unit for auto-assembly (chezmoi)
+### Systemd user unit for auto-assembly (chezmoi) §spec:userbox-auto-assembly
 
 A systemd user service (`~/.config/systemd/user/userbox.service`) runs
 `distrobox assemble create --replace` on login. Managed by chezmoi.
@@ -352,7 +343,7 @@ WantedBy=default.target
 The service starts after login and does not block the GUI session. With
 a cached image, container assembly takes ~10 seconds in the background.
 
-### S13: Sunshine streaming server
+## Sunshine streaming server §spec:sunshine
 
 *Status: not started*
 
@@ -365,7 +356,7 @@ system-level integrations that cannot run from a distrobox.
 *Requirements to be specified after research into Sunshine's Fedora
 packaging and Niri/Wayland compatibility.*
 
-### S14: VS Code
+## VS Code §spec:vscode
 
 *Status: in progress*
 
@@ -376,11 +367,11 @@ Rationale: the previous base (Bluefin-DX) provided VS Code; base-nvidia
 does not. VS Code is a host application that attaches to containers — it
 does not belong in the userbox.
 
-### S16: Dynamic GPU detection for hybrid Intel+Nvidia systems
+## Dynamic GPU detection for hybrid Intel+Nvidia systems §spec:gpu-detection
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 The niri config hardcodes Nvidia-specific environment variables
 (`GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`, `LIBVA_DRIVER_NAME`).
@@ -393,7 +384,7 @@ Additionally, `WLR_NO_HARDWARE_CURSORS` is a wlroots variable. Niri
 uses Smithay and ignores it. The equivalent niri setting is
 `debug { disable-cursor-plane }`.
 
-#### Design
+### Design
 
 Nvidia environment variables move from the static niri config
 (`config.kdl`) to the session wrapper (`niri-session.sh`). The wrapper
@@ -408,28 +399,28 @@ variables stay unset and mesa auto-detects Intel.
 The niri config retains only hardware-independent environment variables
 (`XDG_SESSION_TYPE`, `XCURSOR_SIZE`, `ELECTRON_OZONE_PLATFORM_HINT`).
 
-#### R16.1: No Nvidia environment variables in niri config
+### No Nvidia environment variables in niri config §spec:niri-config-no-nvidia-vars
 
 `config.kdl` shall not set `GBM_BACKEND`, `__GLX_VENDOR_LIBRARY_NAME`,
 `LIBVA_DRIVER_NAME`, or `WLR_NO_HARDWARE_CURSORS`.
 
-#### R16.2: Session wrapper sets Nvidia variables conditionally
+### Session wrapper sets Nvidia variables conditionally §spec:session-wrapper-nvidia-vars
 
 `niri-session.sh` shall detect whether Nvidia drives a display output.
 When true, it exports `GBM_BACKEND=nvidia-drm`,
 `__GLX_VENDOR_LIBRARY_NAME=nvidia`, and `LIBVA_DRIVER_NAME=nvidia`.
 When false, it leaves them unset.
 
-#### R16.3: WLR_NO_HARDWARE_CURSORS removed
+### WLR_NO_HARDWARE_CURSORS removed §spec:hardware-cursors-restored
 
 The wlroots variable `WLR_NO_HARDWARE_CURSORS` is removed entirely. It
 has no effect on niri (Smithay-based).
 
-### S15: Rebase from Bluefin-DX to base-nvidia
+## Rebase from Bluefin-DX to base-nvidia §spec:base-image-rebase
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 The image based on Bluefin-DX (`bluefin-dx-nvidia-open:gts`) pulled in
 four layers of upstream packages (ublue-os/main → Bluefin base →
@@ -438,17 +429,19 @@ Homebrew, and all GNOME extensions. Packages never referenced by the
 build — Docker, Cockpit, ROCm, Incus/LXC, Samba/AD/Kerberos, backup
 tools — added image size and attack surface for no benefit.
 
-#### Design
+### Design
 
-The image rebases onto `ghcr.io/ublue-os/base-nvidia:gts`, the lowest
-Universal Blue layer that includes Nvidia drivers. This image ships no
-desktop environment, no display manager, and no application-layer
-packages.
+The image rebases onto `ghcr.io/ublue-os/base-nvidia`, the lowest
+Universal Blue layer that includes Nvidia drivers. It ships no desktop
+environment, no display manager, and no application-layer packages.
+§spec:base-image records which tag the image tracks.
 
 Changes from the previous base:
 
-- GNOME removal (S1) and Homebrew removal (S2) become no-ops.
-- VS Code (S14) is installed directly from Microsoft's yum repo.
+- The GNOME and Homebrew removal steps become no-ops — base-nvidia
+  ships neither.
+- VS Code (§spec:vscode) is installed directly from Microsoft's yum
+  repo.
 - `nvidia-container-toolkit` is no longer installed by the build — the
   base image provides it.
 - `xdg-desktop-portal-gtk` is no longer installed by the build — the
@@ -458,7 +451,7 @@ Changes from the previous base:
 - `fish` is added to the package install (previously inherited from
   Bluefin base).
 
-### S17: Automated releases
+## Automated releases §spec:releases
 
 *Status: in progress*
 
@@ -482,11 +475,11 @@ tags. Semver tags are additive — they appear only when a release is cut.
 Version history: 0.1.0 (Sway on Bluefin-DX), 0.2.0 (Hyprland on
 Bluefin-DX), 0.3.0 (Niri on Bluefin-DX), 0.4.0 (Niri on base-nvidia).
 
-### S23: Dual-channel image publishing
+## Dual-channel image publishing §spec:image-channels
 
 *Status: not started*
 
-#### Problem
+### Problem
 
 The build workflow produces `latest` and `latest.YYYYMMDD` tags on
 every push to main and daily cron. Semver tags (`0.4.4`) are generated
@@ -528,12 +521,12 @@ The result is four user-facing problems:
    release they derive from. A user cannot tell whether
    `latest.20260318` contains changes from `0.4.4` or `0.4.3`.
 
-#### Design
+### Design
 
 Two update channels serve different stability preferences:
 
 | Channel | Tag | Builds on | Contains |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `latest` | `latest`, `latest.v0.4.4.20260318` | Daily cron, push to main | Latest main + whatever upstream shipped that day |
 | `stable` | `stable`, `0.4.4` | release-please tag push (`v*`) | Exactly the code at the release tag, built against current upstream |
 
@@ -541,7 +534,7 @@ Two update channels serve different stability preferences:
 tracks. `latest` advances daily. `stable` advances only when
 release-please creates a new tag.
 
-##### Tag format
+#### Tag format
 
 Daily and push-to-main builds embed the current semver from
 `version.txt` in the datestamp tag:
@@ -558,11 +551,11 @@ The `v` prefix appears in git tags (`v0.4.4`) but not in image tags
 (`0.4.4`, `stable`). The daily datestamp tag retains `v` as a
 separator: `latest.v0.4.4.20260318`.
 
-##### Push gate
+#### Push gate
 
 The push-to-GHCR and cosign-signing steps gate on:
 
-```
+```text
 github.event_name != 'pull_request' && (
   github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
   startsWith(github.ref, 'refs/tags/v')
@@ -572,26 +565,26 @@ github.event_name != 'pull_request' && (
 This allows both main-branch builds and tag-triggered builds to
 publish images.
 
-##### OCI version label
+#### OCI version label
 
 The `org.opencontainers.image.version` label uses the semver from
 `version.txt` for all builds (e.g., `0.4.4`), replacing the current
 `latest.YYYYMMDD` value. This makes the version visible in `bootc
 status` and container inspect output regardless of channel.
 
-#### R23.1: Daily tags include semver provenance
+### Daily tags include semver provenance §spec:daily-tag-provenance
 
 Daily and push-to-main builds read `version.txt` and produce tags
 `latest` and `latest.v<version>.<YYYYMMDD>`. The bare `YYYYMMDD` and
 `latest.YYYYMMDD` tags are removed.
 
-#### R23.2: Tag builds publish to stable channel
+### Tag builds publish to stable channel §spec:tag-builds-stable-channel
 
 Builds triggered by `v*` tags produce tags `stable` and `<version>`.
 The push gate permits `refs/tags/v*` in addition to the default
 branch.
 
-#### R23.3: build_push runs on all non-PR events
+### build_push runs on all non-PR events §spec:build-push-all-events
 
 The `build_push` job shall not skip on tag pushes, schedule, or
 `workflow_dispatch` due to the `changes` job being skipped. The
@@ -601,31 +594,31 @@ cause a skip cascade for non-PR events.
 
 Rationale: GitHub Actions skips jobs whose `needs` dependencies
 were skipped, regardless of the job's own `if` condition. The fix
-must prevent this propagation without removing path filtering for
+shall prevent this propagation without removing path filtering for
 PRs.
 
-#### R23.4: OCI version label uses semver
+### OCI version label uses semver §spec:oci-version-label
 
 The `org.opencontainers.image.version` label is set to the value of
 `version.txt` for all builds.
 
-### S18: Install media
+## Install media §spec:install-media
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 The image is consumed via `bootc switch` from a running Fedora system.
 This requires an existing installation to migrate from — there is no
 path to bare-metal install on a new machine.
 
-#### Design
+### Design
 
 bootc-image-builder (BIB) produces installable disk images from the
 container image. Two ISO types serve different use cases:
 
 | Type | Config | Network | Use case |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `iso` (bootc-installer) | `disk_config/iso.toml` | Not required | Offline install from USB/Ventoy. Image embedded in ISO. |
 | `anaconda-iso` | `disk_config/anaconda-iso.toml` | Required | Interactive Anaconda installer. Pulls image from GHCR at install time. |
 
@@ -639,42 +632,42 @@ network access is available and interactive setup is preferred.
 
 Both types use a 20 GiB minimum root filesystem on btrfs.
 
-#### R18.1: Offline bootc-installer ISO
+### Offline bootc-installer ISO §spec:iso-offline
 
 BIB produces an `iso` type image that embeds the full container image.
 The ISO is bootable without network access.
 
-#### R18.2: Anaconda ISO
+### Anaconda ISO §spec:iso-anaconda
 
 BIB produces an `anaconda-iso` type image with a graphical Anaconda
 installer. The RHEL Subscription module is disabled. All other
 Anaconda modules use their defaults.
 
-#### R18.3: CI builds both types
+### CI builds both types §spec:ci-builds-iso-types
 
 The `build-disk.yml` workflow matrix includes `iso` and `anaconda-iso`
 alongside `qcow2`. Each type maps to its own config file. Builds run
 on `workflow_dispatch` and on PRs that touch disk config or the
 workflow itself.
 
-#### R18.4: Local build recipes
+### Local build recipes §spec:local-build-recipes
 
 The Justfile provides `build-iso` (offline) and `build-anaconda-iso`
 (network) recipes. Both delegate to BIB via `_build-bib` with the
 appropriate type and config file.
 
-### S19: Video capture kernel module
+## Video capture kernel module §spec:decklink-capture
 
 *Status: complete*
 
-#### Problem
+### Problem
 
 The system requires a professional SDI video I/O PCIe card for
 broadcast capture and playout. The kernel driver for the capture card
-must load at boot on an immutable bootc/OSTree system where
+shall load at boot on an immutable bootc/OSTree system where
 `/usr/lib/modules` is read-only.
 
-#### History: AJA Corvid44
+### History: AJA Corvid44
 
 The original capture card was an AJA Corvid44 12G with its open-source
 `ajantv2.ko` driver built at image time (multi-stage Containerfile
@@ -687,7 +680,7 @@ incorrectly set a 64-bit mask; a fork was maintained to fix this.
 The AJA card was removed from the system. The 32-bit DMA constraint,
 the forked driver, and the IOMMU workaround are no longer needed.
 
-#### Current: Blackmagic DeckLink 8K Pro G2
+### Current: Blackmagic DeckLink 8K Pro G2
 
 The replacement capture card is a Blackmagic DeckLink 8K Pro G2
 (quad-SDI, 64-bit DMA). Its kernel driver (`blackmagic-io.ko`,
@@ -710,30 +703,30 @@ and install workflow:
 
 The recipe lives in `build_files/bmd.just`, installed as
 `/usr/share/ublue-os/just/62-bmd.just` and imported via the
-`60-custom.just` shim (see R12.5). A companion `bmd-uninstall` recipe removes all installed
-artifacts.
+`60-custom.just` shim (see §spec:ujust-setup-user). A companion
+`bmd-uninstall` recipe removes all installed artifacts.
 
 The DeckLink's 64-bit DMA mask imposes no IOMMU constraints.
 `iommu=pt` is safe with this card.
 
-### S20: Rivermax ST2110 streaming
+## Rivermax ST2110 streaming §spec:rivermax
 
-*Status: future work*
+*Status: not started*
 
-#### Problem
+### Problem
 
 The machine has a Mellanox ConnectX-6 NIC capable of hardware-
 accelerated SMPTE ST 2110 media transport via NVIDIA Rivermax. Rivermax
 GPUDirect RDMA allows zero-copy packet I/O between the ConnectX NIC and
 GPU memory over Ethernet.
 
-#### Rivermax SDK requirements (v1.81.21)
+### Rivermax SDK requirements (v1.81.21)
 
 Rivermax hard-requires DOCA-Host (v2.10.0-0.5.3) on the host. Three
 DOCA profiles are compatible:
 
 | Profile | Scope |
-|---|---|
+| --- | --- |
 | `doca-roce` | Minimal Ethernet/RoCE kernel drivers (replaces `MLNX_EN`) |
 | `doca-ofed` | DOCA-OFED drivers and tools (replaces `MLNX_OFED`) |
 | `doca-all` | Full DOCA-Host libraries |
@@ -746,9 +739,9 @@ and CMake components. It requires a license file at
 `/opt/mellanox/rivermax/rivermax.lic` (or via
 `RIVERMAX_LICENSE_PATH`).
 
-#### GPUDirect in Rivermax
+### GPUDirect in Rivermax
 
-Rivermax GPUDirect uses CUDA to allocate GPU memory (must reside in
+Rivermax GPUDirect uses CUDA to allocate GPU memory (which resides in
 PCIe BAR1), then passes pointers to the Rivermax API. The NIC
 reads/writes GPU memory directly. The v1.81.21 docs reference "CUDA
 Toolkit Documentation -> GPUDirect RDMA" for setup — which is the
@@ -760,12 +753,12 @@ manual mentions DMA-BUF. The NVIDIA GPU Operator docs recommend
 DMA-BUF for GPUDirect RDMA generally, but Rivermax has not adopted
 it as of this version.
 
-#### GPU memory registration: background
+### GPU memory registration: background
 
 Linux offers two mechanisms for an RDMA NIC to access GPU memory:
 
 | | nvidia-peermem (legacy) | DMA-BUF (standard) |
-|---|---|---|
+| --- | --- | --- |
 | Verbs call | `ibv_reg_mr()` on GPU pointer | `ibv_reg_dmabuf_mr()` on dma-buf fd |
 | Kernel mechanism | Proprietary NVIDIA peer memory API registered into IB verbs | Standard Linux `dma-buf` fd sharing (kernel 5.12+) |
 | NIC driver requirement | MLNX_OFED or DOCA-OFED | Inbox `rdma-core` sufficient |
@@ -783,12 +776,12 @@ functional stub (`NV_MLNX_IB_PEER_MEM_SYMBOLS_PRESENT` undefined)
 because the build environment lacks DOCA-OFED headers. This stub
 returns `-EINVAL` on load.
 
-#### Design
+### Design
 
 Rivermax userspace runs in a container. The host provides kernel
 drivers and `nvidia-peermem`.
 
-```
+```text
 Host (tilefin-nvidia-open):
   ├─ doca-roce or doca-ofed kernel drivers (replaces inbox mlx5)
   ├─ nvidia-peermem.ko (rebuilt with DOCA-OFED headers)
@@ -804,7 +797,7 @@ Container (Rivermax workload):
 Host-side changes required:
 
 1. **Replace inbox Mellanox kernel driver with DOCA-OFED.** The inbox
-   `mlx5_core` from Fedora's kernel must be replaced (or overlaid)
+   `mlx5_core` from Fedora's kernel shall be replaced (or overlaid)
    with DOCA's version. At minimum `doca-roce` profile. DOCA packages
    are published for RHEL — Fedora compatibility is unverified.
 2. **Rebuild `nvidia-peermem.ko`** with DOCA-OFED headers present so
@@ -821,7 +814,7 @@ has explored the full DOCA stack on CentOS Stream 10 (bluefin-gdx:lts
 base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
 `rivermax-utils` directly into the image via the Mellanox yum repo.
 
-#### Open questions
+### Open questions
 
 - Can DOCA-OFED kernel packages (built for RHEL) install on Fedora
   42's kernel, or does Fedora's kernel ABI diverge too far?
@@ -840,13 +833,13 @@ base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
 Requirements to be specified after resolving DOCA-OFED packaging on
 Fedora bootc.
 
-### S21: NVIDIA DRM modesetting
+## NVIDIA DRM modesetting §spec:nvidia-drm-modeset
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
-The rebase from Bluefin-DX to base-nvidia (S15) dropped
+The rebase from Bluefin-DX to base-nvidia (§spec:base-image-rebase) dropped
 `nvidia-drm.modeset=1` from kernel args. Bluefin-DX passed it on the
 command line; base-nvidia does not. Without DRM modesetting, NVIDIA
 cannot properly manage display power states. Display DPMS power cycling
@@ -858,7 +851,7 @@ causing:
 - Hyprlock renders a flat magenta/red field instead of a blurred
   screenshot after extended display sleep.
 
-#### Design
+### Design
 
 A `bootc kargs.d` file (`30-nvidia-drm.toml`) adds
 `nvidia-drm.modeset=1` to kernel arguments, following the same pattern
@@ -868,43 +861,43 @@ The base image already ships `NVreg_PreserveVideoMemoryAllocations=1`
 in `/usr/lib/modprobe.d/nvidia.conf` — no additional modprobe
 configuration is needed.
 
-#### R21.1: DRM modesetting kernel arg
+### DRM modesetting kernel arg §spec:drm-modeset-karg
 
 `/usr/lib/bootc/kargs.d/30-nvidia-drm.toml` sets
 `nvidia-drm.modeset=1`. The arg appears in `/proc/cmdline` after reboot.
 
-### S22: Manual system suspend
+## Manual system suspend §spec:manual-suspend
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 The nwg-bar power menu provides Lock, Logout, Reboot, and Shutdown but
-no suspend option. Users must run `systemctl suspend` manually.
+no suspend option. Users run `systemctl suspend` manually instead.
 
 Auto-suspend during the workday remains intentionally disabled — an
 unattended suspend during long-running builds or VM workloads is
 destructive. Manual suspend via the power menu gives the user explicit
-control at any time. S26 adds time-gated auto-suspend outside business
-hours in development mode; the manual button remains the contract for
-this section.
+control at any time. §spec:auto-suspend adds time-gated auto-suspend
+outside business hours in development mode; the manual button remains
+the contract for this section.
 
-#### Design
+### Design
 
 nwg-bar gains a Sleep button between Lock and Logout. The button runs
 `systemctl suspend`. The icon (`system-suspend.svg`) ships with the
 nwg-bar package.
 
-#### R22.1: Sleep button in nwg-bar
+### Sleep button in nwg-bar §spec:nwg-bar-sleep
 
 The nwg-bar config (`bar.json`) includes a Sleep entry that runs
 `systemctl suspend`, positioned between Lock and Logout.
 
-### S24: EGL-Wayland platform plugin
+## EGL-Wayland platform plugin §spec:egl-wayland
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 NVIDIA's EGL implementation does not natively know how to create Wayland
 surfaces. Without the `egl-wayland` package, `eglGetPlatformDisplay(
@@ -913,9 +906,9 @@ NVIDIA hardware. GDK/Flutter applications then either software-render or
 fail to initialize.
 
 Nothing in the base-nvidia driver stack pulls `egl-wayland` as a
-dependency — it must be installed explicitly.
+dependency — it shall be installed explicitly.
 
-#### Design
+### Design
 
 The image installs `egl-wayland` in the `WAYLAND_CORE` package group.
 This allows NVIDIA's EGL to handle Wayland platform display requests,
@@ -925,40 +918,41 @@ enabling:
 - Thermion/Filament sharing Flutter's NVIDIA EGL context and display
   via `EGLImage`, avoiding a cross-driver copy.
 
-#### R24.1: egl-wayland in image
+### egl-wayland in image §spec:egl-wayland-installed
 
 `egl-wayland` is present in the installed image, providing
 `/usr/lib64/libnvidia-egl-wayland.so.1` and the EGL external platform
 registration at
 `/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
 
-### S25: Production mode
+## Production mode §spec:production-mode
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
-`rpm-ostreed-automatic.timer` runs in `stage` mode (S8): it fetches the
-latest image and stages it as the next deployment while the system is
-running. The next reboot — whatever the reason — applies the staged
-image. There is no per-machine way to opt out without disabling the
-timer entirely.
+`rpm-ostreed-automatic.timer` runs in `stage` mode
+(§spec:system-services): it fetches the latest image and stages it as
+the next deployment while the system is running. The next reboot —
+whatever the reason — applies the staged image. There is no per-machine
+way to opt out without disabling the timer entirely.
 
 For live workloads (video capture, broadcast, ST2110 streaming, GPU
 passthrough VMs) the user's mental model of a reboot is "the system
 comes back the way I left it." Auto-staging inverts that: every reboot
-is a potential image transition, with kernel modules, NVIDIA driver,
-and capture-card kmod versions changing under the user's feet. The
-staged image is unvalidated against the workload — a regression in
+is a potential image transition, with kernel modules, NVIDIA driver, and
+capture-card kmod versions changing under the user's feet. The staged
+image is unvalidated against the workload — a regression in
 `kmod-nvidia`, the AJA out-of-tree driver, or peermem header coupling
-(S19, S20) only surfaces post-reboot, often mid-show.
+(§spec:decklink-capture, §spec:rivermax) only surfaces post-reboot,
+often mid-show.
 
 The destructive action is not the reboot — it is staging an unvetted
 image *before* a reboot that the user expects to be non-destructive.
 Production mode preserves the user's "current system is the system I
 want" intent across reboots.
 
-#### Design
+### Design
 
 A flag file at `/etc/tilefin/production-mode` gates the auto-update
 service. `/etc` is the per-machine mutable tree on bootc/OSTree —
@@ -991,7 +985,7 @@ text (e.g., `production · 5d` vs `development · 5d`) so the user
 sees current state at a glance, not just by inspecting `systemctl
 status`.
 
-##### Rejected alternatives
+#### Rejected alternatives
 
 - **`systemctl mask rpm-ostreed-automatic.timer`** — works, but the
   mask state lives in `/etc/systemd/system/` as a symlink to
@@ -1009,20 +1003,20 @@ status`.
   machine state (caches, spools, logs); `/etc` is policy. A flag
   toggling system update policy belongs with policy.
 
-#### R25.1: Flag file gates auto-staging
+### Flag file gates auto-staging §spec:production-flag-gates-staging
 
 When `/etc/tilefin/production-mode` exists, `rpm-ostreed-automatic.service`
 does not run when triggered by its timer. `systemctl status
 rpm-ostreed-automatic.service` reports the unmet condition. When the
 flag is removed, the next timer firing stages updates as before.
 
-#### R25.2: Manual updates remain available
+### Manual updates remain available §spec:manual-updates-available
 
 When production mode is on, `bootc upgrade`, `rpm-ostree update`, and
 `ujust update` apply updates as normal. The lock applies only to
 timer-triggered automatic staging.
 
-#### R25.3: ujust production-mode recipe
+### ujust production-mode recipe §spec:ujust-production-mode
 
 `ujust production-mode --start | --stop | --start-from-current`
 toggles the flag. `--start` is interactive: when a deployment is
@@ -1031,13 +1025,13 @@ to keep or unstage it. `--start-from-current` always unstages any
 staged deployment non-interactively, guaranteeing the next reboot
 boots the currently running image. `--stop` removes the flag.
 
-#### R25.4: Waybar surfaces production mode
+### Waybar surfaces production mode §spec:waybar-production-indicator
 
 When production mode is on, the waybar update module text reads
-`production · <age>` and the tooltip includes a `Mode: production`
-line. When off, the text reads `development · <age>` and the
-tooltip shows `Mode: development`. Staging information continues to
-display as in S8 — production mode does not hide a manually-staged
+`production · <age>` and the tooltip includes a `Mode: production` line.
+When off, the text reads `development · <age>` and the tooltip shows
+`Mode: development`. Staging information continues to display as in
+§spec:system-services — production mode does not hide a manually-staged
 deployment.
 
 The module re-execs immediately when the flag is toggled. The
@@ -1046,12 +1040,13 @@ recipe sends `SIGRTMIN+8` to waybar after touching or removing the
 flag, so the bar reflects the new mode without waiting for the
 hourly poll. A reboot is not required.
 
-#### R25.5: No idle interruptions in production mode
+### No idle interruptions in production mode §spec:production-no-idle-interrupt
 
 When `/etc/tilefin/production-mode` exists, the hypridle display-off
-listener (300s) and the lock listener (600s) are both skipped. The
-dim listener (240s) continues to fire as in S5. The S26 auto-suspend
-listener is also skipped — production machines never auto-suspend.
+listener (300s) and the lock listener (600s) are both skipped. The dim
+listener (240s) continues to fire as in §spec:display-manager. The
+§spec:auto-suspend auto-suspend listener is also skipped — production
+machines never auto-suspend.
 
 The gate lives inline in each gated listener's `on-timeout`:
 `sh -c '[ ! -e /etc/tilefin/production-mode ] && <action>'`. Hypridle
@@ -1059,7 +1054,7 @@ keeps a single config and is not reloaded on toggle; the flag is
 checked at fire time, so the new mode takes effect on the next idle
 window.
 
-##### Why gate idle display-off and idle lock
+#### Why gate idle display-off and idle lock
 
 Production environments alternate between long idle stretches and
 short urgent bursts of operator activity. A 5-minute display-off or
@@ -1083,39 +1078,40 @@ are physically attended (live broadcast, capture booth, control
 surface) where the room itself enforces access. `Mod+L` still locks
 manually; only the idle trigger is gated.
 
-### S26: Time-gated auto-suspend in development mode
+## Time-gated auto-suspend in development mode §spec:auto-suspend
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 A development workstation left idle overnight or over a weekend stays
 fully powered — GPU, fans, and PSU drawing wall power with no operator
-present. S22 deliberately disabled auto-suspend because an unattended
-suspend during a long build or VM run is destructive. The result is the
-opposite failure: a machine nobody is using never sleeps.
+present. §spec:manual-suspend deliberately disabled auto-suspend because
+an unattended suspend during a long build or VM run is destructive. The
+result is the opposite failure: a machine nobody is using never sleeps.
 
-S25 production mode already separates attended-production machines (live
-capture, broadcast) from development machines. Production machines must
-never sleep. Development machines should sleep when no one is working —
-but not during the workday, when an auto-suspend mid-task is the
-destructive interruption S22 guards against.
+§spec:production-mode production mode already separates
+attended-production machines (live capture, broadcast) from development
+machines. Production machines shall never sleep. Development machines
+should sleep when no one is working — but not during the workday, when
+an auto-suspend mid-task is the destructive interruption
+§spec:manual-suspend guards against.
 
-#### Design
+### Design
 
 In development mode (the `/etc/tilefin/production-mode` flag is absent),
-the system auto-suspends to deep S3 after 30 minutes idle, but only
-outside business hours. Business hours are Monday–Friday 08:00–18:00
-local time; 18:00:00 itself is outside the window. Manual suspend
-(nwg-bar Sleep, `Mod+Shift+L`) works at any time, in any mode (S22).
-Production mode never auto-suspends.
+the system auto-suspends to deep §spec:niri-compositor after 30 minutes
+idle, but only outside business hours. Business hours are Monday–Friday
+08:00–18:00 local time; 18:00:00 itself is outside the window. Manual
+suspend (nwg-bar Sleep, `Mod+Shift+L`) works at any time, in any mode
+(§spec:manual-suspend). Production mode never auto-suspends.
 
-deep S3 is the target because it is the deepest sleep state this
-hardware can wake from via USB (`/sys/power/mem_sleep` defaults to
-`deep`); a USB keyboard, mouse, or wireless receiver wakes the machine.
-Hibernate (S4) is rejected: it is not USB-wakeable (power-button only)
-and is not configured — swap is zram-only, which cannot back a
-hibernation image.
+deep §spec:niri-compositor is the target because it is the deepest sleep
+state this hardware can wake from via USB (`/sys/power/mem_sleep`
+defaults to `deep`); a USB keyboard, mouse, or wireless receiver wakes
+the machine. Hibernate (§spec:wayland-stack) is rejected: it is not
+USB-wakeable (power-button only) and is not configured — swap is
+zram-only, which cannot back a hibernation image.
 
 Idle detection is hypridle's; the suspend decision is a guard script.
 hypridle fires each listener once per idle period, so a machine that
@@ -1129,17 +1125,17 @@ to idle notifications and nothing fires until the next idle period.
 This holds regardless of `ext-idle-notify-v1` fire semantics, because
 the timeout is measured from notification-object creation.
 
-#### Why a guard script, not an inline gate
+### Why a guard script, not an inline gate
 
-R25.5 gates idle display-off and lock with an inline
-`[ ! -e /etc/tilefin/production-mode ] && <action>`. The auto-suspend
-gate adds day-of-week and hour-of-day conditions that exceed what a
-readable hypridle one-liner can carry and that warrant tests. The guard
-is a script alongside the existing waybar helper scripts, with its clock
-and flag path overridable so the decision matrix is testable without
-suspending the host.
+§spec:production-no-idle-interrupt gates idle display-off and lock with
+an inline `[ ! -e /etc/tilefin/production-mode ] && <action>`. The
+auto-suspend gate adds day-of-week and hour-of-day conditions that
+exceed what a readable hypridle one-liner can carry and that warrant
+tests. The guard is a script alongside the existing waybar helper
+scripts, with its clock and flag path overridable so the decision matrix
+is testable without suspending the host.
 
-#### Why restart hypridle, not a standalone idle check
+### Why restart hypridle, not a standalone idle check
 
 The re-arm timer could instead query session idle time directly
 (`loginctl` idle hints) and suspend without hypridle. Rejected: it would
@@ -1147,7 +1143,7 @@ duplicate idle tracking hypridle already owns and re-derive the same
 30-minute threshold. Restarting hypridle reuses one idle source and
 keeps the threshold defined in one place.
 
-#### R26.1: Auto-suspend guard
+### Auto-suspend guard §spec:auto-suspend-guard
 
 A guard script suspends the system via `systemctl suspend` unless either
 condition holds:
@@ -1159,12 +1155,12 @@ Weekday derives from `date +%u` (1–5 = Mon–Fri) and hour from
 `date +%H`. The flag path, suspend command, and current time are
 overridable via environment variables for testing.
 
-#### R26.2: Idle suspend listener
+### Idle suspend listener §spec:idle-suspend-listener
 
 hypridle includes a listener that, after 1800 seconds idle, runs the
 guard. This replaces the previously commented-out auto-suspend block.
 
-#### R26.3: hypridle runs as a user service
+### hypridle runs as a user service §spec:hypridle-user-service
 
 hypridle runs as a systemd `--user` service so the re-arm mechanism can
 restart it. niri starts it from `spawn-at-startup` via
@@ -1177,7 +1173,7 @@ imports the session environment into systemd and D-Bus but does not
 activate that target, so a unit wired `WantedBy=graphical-session.target`
 would never start. The compositor spawn is the start trigger instead.
 
-#### R26.4: Weekday re-arm
+### Weekday re-arm §spec:weekday-rearm
 
 A systemd `--user` timer fires at 18:00 Monday–Friday, re-arming idle
 detection at the business-hours boundary. It is enabled image-wide via
@@ -1186,11 +1182,11 @@ independent of the graphical session). The timer triggers a service that
 `try-restart`s hypridle — a no-op when hypridle is not running, so an
 absent or already-suspended session is unaffected.
 
-### S27: Encrypted credential storage (Secret Service)
+## Encrypted credential storage (Secret Service) §spec:credential-storage
 
 *Status: in progress*
 
-#### Problem
+### Problem
 
 The image ships no freedesktop Secret Service provider. `gh` — and any
 application using `org.freedesktop.secrets` — therefore has no encrypted
@@ -1201,7 +1197,7 @@ a credential store is not found … fallback to writing the token to a
 plain text file"). `secret-tool` is present but non-functional because
 nothing owns the bus name.
 
-#### Design
+### Design
 
 The image installs gnome-keyring as the Secret Service provider,
 auto-unlocked at greetd login.
@@ -1215,12 +1211,12 @@ unlocks the login keyring at session start. gnome-keyring then owns
 `org.freedesktop.secrets`, so gh's secure storage and `secret-tool`
 resolve to the encrypted keyring instead of the plaintext fallback.
 
-gnome-keyring must not take over `SSH_AUTH_SOCK`: the Bitwarden flatpak
-ssh-agent owns SSH for this user (S3 session wrapper). gnome-keyring 48
-no longer ships an ssh-agent component (split into `gcr-ssh-agent`, which
-is not installed), and `niri-session.sh` sets `SSH_AUTH_SOCK` to the
-Bitwarden socket regardless — so the secrets keyring and the SSH agent
-do not collide.
+gnome-keyring shall not take over `SSH_AUTH_SOCK`: the Bitwarden flatpak
+ssh-agent owns SSH for this user (§spec:niri-compositor session
+wrapper). gnome-keyring 48 no longer ships an ssh-agent component (split
+into `gcr-ssh-agent`, which is not installed), and `niri-session.sh`
+sets `SSH_AUTH_SOCK` to the Bitwarden socket regardless — so the secrets
+keyring and the SSH agent do not collide.
 
 Why local, not a synced vault: no synced vault (Bitwarden, Proton Pass)
 implements the Secret Service API — that role is local-only. A gh token
@@ -1229,13 +1225,14 @@ the appropriate store.
 
 Retrieving user-scoped secrets from a synced vault on demand (e.g. a
 per-repo `GH_TOKEN` pulled from Bitwarden) is a separate concern handled
-by `rbw`, delivered via userbox — not the image. Per the S12 boundary, a
-Bitwarden CLI is a user tool, and it sits alongside `gh` (also userbox).
-This image contributes only the existing plumbing: the direnv hook
-(R11.1) and `~/.local/bin` on `PATH` (R11.2), which a project's
-(gitignored) `.envrc` uses to call `rbw` and export `GH_TOKEN`.
+by `rbw`, delivered via userbox — not the image. Per the §spec:userbox
+boundary, a Bitwarden CLI is a user tool, and it sits alongside `gh`
+(also userbox). This image contributes only the existing plumbing: the
+direnv hook (§spec:tool-aliases) and `~/.local/bin` on `PATH`
+(§spec:user-local-bin-path), which a project's (gitignored) `.envrc`
+uses to call `rbw` and export `GH_TOKEN`.
 
-#### R27.1: Secret Service provider
+### Secret Service provider §spec:secret-service-provider
 
 `gnome-keyring` and `gnome-keyring-pam` are installed. The daemon
 provides `org.freedesktop.secrets`; the greetd PAM stack unlocks the
@@ -1243,11 +1240,11 @@ login keyring with the login password at session start. gh secure
 storage and `secret-tool` resolve to this keyring; gh no longer writes
 its token to plaintext `hosts.yml`.
 
-### S29: GPUDirect Storage
+## GPUDirect Storage §spec:gpudirect-storage
 
-*Status: complete — verified 2026-08-03*
+*Status: complete*
 
-#### Problem
+### Problem
 
 A consuming project on this host needs NVIDIA GPUDirect Storage — the
 `cuFile` API reading NVMe data directly into GPU memory, with no bounce
@@ -1257,15 +1254,15 @@ buffer through host RAM. GDS does not work on the image as shipped:
 The image carries five NVIDIA modules from ublue's `kmod-nvidia`:
 `nvidia`, `nvidia-drm`, `nvidia-modeset`, `nvidia-uvm`, and
 `nvidia-peermem`. The last is GPUDirect RDMA for the network path
-(S20), not storage. There is no `nvidia-fs`.
+(§spec:rivermax), not storage. There is no `nvidia-fs`.
 
-#### Design
+### Design
 
 libcufile has three modes. `compat` bounces through host memory and
 defeats the purpose; the other two are real DMA paths:
 
 | Mode | Kernel module | Storage |
-|---|---|---|
+| --- | --- | --- |
 | `nvfs` | `nvidia-fs.ko` | all VFS filesystems, distributed FS, NFS over RDMA |
 | `p2pdma` | none | ext4/XFS on NVMe; no RAID0 or multipath |
 
@@ -1281,24 +1278,24 @@ support GDS with Ext4 and XFS with NVMe drives."
 Every prerequisite is already met — kernel 7.1.5 (≥ 6.2),
 `CONFIG_PCI_P2PDMA=y`, open driver 610.43.03 (≥ 570), CUDA 13.2
 userspace, plain NVMe with no RAID0 or multipath. Only a driver registry
-key is missing (R29.1). Kernel and driver versions track the base image
-and move with it; the constraints are the floors, not these exact
-builds.
+key is missing (§spec:static-bar1-p2pdma). Kernel and driver versions
+track the base image and move with it; the constraints are the floors,
+not these exact builds.
 
 Scope is the host enabling config alone. GDS userspace — `libcufile`,
 `gdscheck` — is a CUDA toolkit component belonging to the consuming
-project (see Out of scope), matching the S28 split between image-side
-enabling config and userspace tooling.
+project (see §spec:out-of-scope), matching the split this image draws
+everywhere between host enabling config and userspace tooling.
 
 That split leaves one obligation on the consumer: libcufile ships
-`"use_pci_p2pdma": false`, so p2pdma is off by default and must be
+`"use_pci_p2pdma": false`, so p2pdma is off by default and shall be
 enabled in `cufile.json` (system-wide at `/etc/cufile.json`, or per
 process via `CUFILE_ENV_PATH_JSON`). Neither the image nor the CUDA
 packages create that file. A consumer that skips this gets `compat`
 — a working cuFile API backed by a CPU bounce buffer — with no error to
 distinguish it from a hardware or driver limitation.
 
-##### PCIe topology
+#### PCIe topology
 
 The GPU and the NVMe drives sit on different root complexes: the GPU at
 `0000:41:00.0` under host bridge `0000:40`, both NVMe controllers under
@@ -1320,7 +1317,7 @@ Traffic therefore crosses the root complex by design, which bounds
 achievable bandwidth below what a shared-switch topology would give.
 That is a performance ceiling, not a functional blocker.
 
-#### Deferred: building nvidia-fs.ko
+### Deferred: building nvidia-fs.ko
 
 Compiling nvidia-fs into the image was prototyped and deferred, not
 ruled out — see "Network filesystems will require it" below. It is
@@ -1330,8 +1327,9 @@ shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
 — but:
 
 - The `nvfs` path wants NVMe driver patches from DOCA's
-  `mlnx-nvme-dkms`. DOCA on Fedora is the same blocker that stalls S20,
-  so the module alone may not deliver a working DMA path.
+  `mlnx-nvme-dkms`. DOCA on Fedora is the same blocker that stalls
+  §spec:rivermax, so the module alone may not deliver a working DMA
+  path.
 - It commits the image to rebuilding an out-of-tree module against every
   kernel bump, pinned to an nvidia-fs release that supports that kernel.
 - The result is unsigned. ublue signs its akmods with a key this repo
@@ -1340,7 +1338,7 @@ shipped `nvidia.ko`, and `kernel-devel` from Fedora's `updates-archive`
 `p2pdma` avoids all three, and covers the local-NVMe workload this
 section was raised for.
 
-##### Network filesystems will require it
+#### Network filesystems will require it
 
 `p2pdma` is restricted to NVMe block devices. NVIDIA scopes the
 exemption explicitly: nvidia-fs.ko "is not necessary for the case of
@@ -1349,40 +1347,43 @@ version 12.8 and higher" — NVMe only, nothing else.
 
 GDS against a distributed filesystem — Lustre, WekaFS, EXAScaler, GPFS,
 or NFS over RDMA — therefore still needs the `nvfs` path and
-`nvidia-fs.ko`. Nothing in S29 delivers that, and no configuration of
-what S29 does deliver reaches it. When such a workload arrives this
-section reopens with the three costs above intact, plus probably a
-fourth: RDMA-backed distributed clients are likely to want the same
-DOCA/MOFED stack that blocks S20, which would couple the two. That
-coupling is inferred from the shared DOCA dependency rather than
-verified, and should be checked before it is planned around.
+`nvidia-fs.ko`. Nothing in §spec:gpudirect-storage delivers that, and no
+configuration of what §spec:gpudirect-storage does deliver reaches it.
+When such a workload arrives this section reopens with the three costs
+above intact, plus probably a fourth: RDMA-backed distributed clients
+are likely to want the same DOCA/MOFED stack that blocks §spec:rivermax,
+which would couple the two. That coupling is inferred from the shared
+DOCA dependency rather than verified, and should be checked before it is
+planned around.
 
-#### R29.1: Static BAR1 for PCI P2PDMA
+### Static BAR1 for PCI P2PDMA §spec:static-bar1-p2pdma
 
 The kernel's P2PDMA allocator hands NVMe the GPU's BAR1 addresses
 directly, which requires the framebuffer to be statically mapped into
 BAR1 rather than mapped through a sliding window.
 `/usr/lib/bootc/kargs.d/40-nvidia-params.toml` sets
-`nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2` (R29.3 explains why
-this is a kernel arg rather than a `modprobe.d` option).
+`nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2`
+(§spec:nvidia-params-as-kargs explains why this is a kernel arg rather
+than a `modprobe.d` option).
 
 The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
 "will only map static BAR1 if static BAR1 size is calculated to be big
 enough to map all of FB once plus a calculated amount for other expected
 BAR1 mappings", whereas ENABLE "does not take into account other
 expected BAR1 mappings and may lead to BAR1 exhaustion later". Those
-other mappings are GPUDirect RDMA's (S20), which this image intends to
-keep working.
+other mappings are GPUDirect RDMA's (§spec:rivermax), which this image
+intends to keep working.
 
 Static BAR1 does not conflict with resizable BAR; it requires a BAR1
 large enough to map the whole framebuffer. What supplies that size is
 the firmware, not the driver: on the target hardware BAR1 is 65536 MiB
 against 49140 MiB of framebuffer — leaving ~16 GiB for other mappings —
 while `NVreg_EnableResizableBar` read back as `0`, because the option
-was set in `modprobe.d` and never applied (R29.3). UEFI "Above 4G
-Decoding" and "Resizable BAR" are therefore the real prerequisites. The
-driver-side opt-in is set as a karg alongside the dword to make the
-request explicit rather than incidental.
+was set in `modprobe.d` and never applied
+(§spec:nvidia-params-as-kargs). UEFI "Above 4G Decoding" and "Resizable
+BAR" are therefore the real prerequisites. The driver-side opt-in is set
+as a karg alongside the dword to make the request explicit rather than
+incidental.
 
 `RmForceDisableIomapWC=1` is set alongside it, and is not optional
 despite NVIDIA documenting it as a workaround "for chipsets where
@@ -1407,8 +1408,9 @@ to fall back on.
 This one parameter therefore ships in
 `/usr/lib/modprobe.d/nvidia-tilefin.conf`, which puts no bootloader in
 the path, and the image regenerates its initramfs so the file is
-actually read (R29.3). The `;`-free parameters stay as kargs, so a
-dracut failure cannot regress settings that already work.
+actually read (§spec:nvidia-params-as-kargs). The `;`-free parameters
+stay as kargs, so a dracut failure cannot regress settings that already
+work.
 
 The observable signal that both gates passed is
 `/sys/bus/pci/devices/<gpu>/p2pmem/`. If that directory does not exist,
@@ -1417,7 +1419,7 @@ produce a DMA path. Check `/proc/driver/nvidia/params` alongside it —
 a truncated `RegistryDwords` means the parameter never arrived, which is
 a different failure from the driver declining to register.
 
-#### R29.2: IOMMU mode
+### IOMMU mode §spec:iommu-mode
 
 GDS peer-to-peer DMA requires the NVMe device to reach the GPU's BAR.
 Under a *translating* IOMMU that path is unreliable, which is the basis
@@ -1426,23 +1428,23 @@ throughput one. Modern IOMMUs are close to free: `iommu=pt` runs an
 identity-mapped domain for host-driven devices, and Linux defaults to
 lazy IOTLB invalidation for those that are translated.
 
-The image already sets `iommu=pt` (S19), and `gdscheck -p` reports the
-GPU as "supports GDS" under it. That is the starting position, not a
-proven one: the same output warns "GDS is not guaranteed to work
-functionally or in a performant way with iommu=on/pt", and NVIDIA's tool
-does not distinguish `pt` from `on` there. Whether `pt` suffices in
-practice is an open question below.
+The image already sets `iommu=pt` (§spec:decklink-capture), and
+`gdscheck -p` reports the GPU as "supports GDS" under it. That is the
+starting position, not a proven one: the same output warns "GDS is not
+guaranteed to work functionally or in a performant way with
+iommu=on/pt", and NVIDIA's tool does not distinguish `pt` from `on`
+there. Whether `pt` suffices in practice is an open question below.
 
 Rebasing onto a current image is not sufficient to get `iommu=pt` on a
 machine that once had it removed. `kargs.d` is applied as a diff against
 the previous image, and a local deletion outranks it: this machine boots
 `intel_iommu=on amd_iommu=on` from `10-iommu.toml` while `iommu=pt` from
 the same file is absent, because it was deleted locally when the AJA
-Corvid44 needed the SWIOTLB bounce path (S19). Restoring it takes a
-one-time `rpm-ostree kargs --append=iommu=pt`; no image change will do
-it.
+Corvid44 needed the SWIOTLB bounce path (§spec:decklink-capture).
+Restoring it takes a one-time `rpm-ostree kargs --append=iommu=pt`; no
+image change will do it.
 
-#### R29.3: NVIDIA module parameters are kernel args
+### NVIDIA module parameters are kernel args §spec:nvidia-params-as-kargs
 
 Module options this image adds under `/etc/modprobe.d/` never reach the
 NVIDIA driver. `nvidia.ko` loads from the initramfs, seconds before
@@ -1460,8 +1462,8 @@ Two deliveries are therefore in play. Parameters whose values contain no
 `;` ship as kargs in `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`,
 matching the existing `nvidia-drm.modeset=1`; kernel command line
 parameters bind at module load regardless of where the module came from.
-`NVreg_RegistryDwords` cannot use that route (R29.1), so the image
-regenerates its initramfs — invocation mirroring
+`NVreg_RegistryDwords` cannot use that route (§spec:static-bar1-p2pdma),
+so the image regenerates its initramfs — invocation mirroring
 `ublue-os/main build_files/initramfs.sh` — and ships that parameter in
 `/usr/lib/modprobe.d/nvidia-tilefin.conf`.
 
@@ -1477,7 +1479,7 @@ despite `NVreg_RestrictProfilingToAdminUsers=0` in `/etc/modprobe.d/`.
 Anything added to `/etc/modprobe.d/` for a module the initramfs loads is
 silently ineffective. Check `/proc/driver/nvidia/params`, not the file.
 
-#### Verification
+### Verification
 
 Confirmed working on 2026-08-03, kernel 7.1.5-101, driver 610.43.03.
 
@@ -1492,12 +1494,12 @@ End-to-end transfers with `allow_compat_mode: false`, so a fallback
 would error rather than report success:
 
 | Test (8 GiB, 4 MiB IO, 8 threads, XFS on NVMe) | Result |
-|---|---|
+| --- | --- |
 | `gdsio -x 0 -I 0` (read) | `XferType: GPUD` 3.266 GiB/s |
 | `gdsio -x 0 -I 1` (write) | `XferType: GPUD` 3.005 GiB/s |
 | `gdsio -x 1 -I 0` (CPU control) | `XferType: CPUONLY` 3.269 GiB/s |
 
-##### Do not use gdscheck as the acceptance test
+#### Do not use gdscheck as the acceptance test
 
 `gdscheck -p` reports `NVMe : compat` on a working configuration. Its
 storage rows describe the `nvidia-fs` path, which this image
@@ -1509,7 +1511,7 @@ directory and `gdsio` reporting `XferType: GPUD`.
 `iommu=on/pt` warning is worth reading — but that warning did not
 predict failure here.
 
-##### The storage device is the bottleneck, not the topology
+#### The storage device is the bottleneck, not the topology
 
 GPUD and CPU paths measure the same because the drive is saturated,
 not because P2PDMA is inactive. The XFS volume sits on
@@ -1523,13 +1525,13 @@ bytes never traverse host RAM or CPU cores. Raising the ceiling means a
 Gen4/Gen5 part on the data volume — not RAID0, which NVIDIA does not
 support with p2pdma, and not slot changes.
 
-#### Resolved questions
+### Resolved questions
 
 - **Is `iommu=pt` enough?** Yes. Verified working with
   `intel_iommu=on amd_iommu=on iommu=pt` and KASLR active. NVIDIA's
   `iommu=on/pt` warning and the KASLR known-issue both proved
   non-blocking on this platform, so neither `iommu=off` nor `nokaslr`
-  is needed — and the S9 passthrough capability is retained.
+  is needed — and the §spec:virtualization passthrough capability is retained.
 - **Filesystem coverage.** Unchanged and still a real constraint: GDS
   applies only to the XFS volume. The btrfs root qualifies for neither
   `p2pdma` nor `nvfs`.
@@ -1537,25 +1539,27 @@ support with p2pdma, and not slot changes.
   exactly two root ports wired to slots — the GPU and the ConnectX-6 —
   with `07.1`/`08.1` leading to AMD internal functions, so co-locating
   an NVMe means displacing the NIC and the GPUDirect RDMA co-location
-  S20 wants. It would not change the mapping class either:
+  §spec:rivermax wants. It would not change the mapping class either:
   `PCI_P2PDMA_MAP_BUS_ADDR` needs a common upstream bridge, i.e. a PCIe
   switch, and separate root ports under one host bridge still yield
   `THRU_HOST_BRIDGE`. Bifurcation creates root ports, not a switch.
   NUMA is moot — single node, `numa_node=-1` on every device.
 
-## Out of scope
+## Out of scope §spec:out-of-scope
+
+*Status: complete*
 
 - **GDS userspace**: `libcufile`, `libcufile_rdma`, and `gdscheck` are
   CUDA toolkit components. They install with CUDA in the consuming
   environment (pip wheel or userbox); the image provides only the
-  kernel module (S29).
+  kernel module (§spec:gpudirect-storage).
 - **User dotfiles**: Managed by chezmoi in a separate repo. This image
   provides system-wide defaults via `/etc/skel/`, `/etc/xdg/`, and
   `/etc/profile.d/`. Users override in `~/.config/`.
 - **Userbox Containerfile**: Lives in repentsinner/userbox. This spec
-  covers the image-side changes only (R12.1–R12.5).
+  covers the image-side changes only — see §spec:userbox.
 - **Flutter/FVM**: Future addition to the userbox Containerfile.
   The host image provides `egl-wayland` for NVIDIA-accelerated
-  rendering (S24); Flutter itself runs in the userbox.
+  rendering (§spec:egl-wayland); Flutter itself runs in the userbox.
 - **Flatpak apps beyond Bitwarden**: User-installed via
   `flatpak install --user`.

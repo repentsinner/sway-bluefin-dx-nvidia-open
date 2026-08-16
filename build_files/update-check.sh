@@ -1,7 +1,7 @@
 #!/bin/bash
 # Waybar module: show image age (fuzzy) and update availability
 
-# Production-mode flag (S25). Toggled by `ujust production-mode --start|--stop`.
+# Production-mode flag (§spec:production-mode). Toggled by `ujust production-mode --start|--stop`.
 if [ -f /etc/tilefin/production-mode ]; then
     MODE="production"
 else
