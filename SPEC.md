@@ -661,6 +661,13 @@ container storage and exits 125 otherwise. `_build-bib` depends on
 `sudo podman pull` first; the CI action pulls both the builder and the
 input image itself.
 
+BIB reads that storage from `/var/lib/containers/storage` inside its
+container, so the mount has to point at the graphroot podman actually
+uses. `/etc/containers/storage.conf` may relocate it — on a host that
+does, mounting the default path presents an empty store and BIB reports
+`image not known` for an image that is present. `_build-bib` resolves
+the path from `podman info` rather than assuming it.
+
 ### Open questions
 
 - Does the ISO install without network access? Offline install from a

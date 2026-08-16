@@ -168,6 +168,12 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
 
     BUILDTMP=$(mktemp -p "${PWD}" -d -t _build-bib.XXXXXXXXXX)
 
+    # BIB reads the image from container storage and no longer pulls it.
+    # Mount the graphroot podman actually uses rather than the default
+    # path: /etc/containers/storage.conf may relocate it, and mounting
+    # the wrong directory yields "image not known" for an image that is
+    # demonstrably present.
+
     sudo podman run \
       --rm \
       -it \
@@ -177,7 +183,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
       --security-opt label=type:unconfined_t \
       -v $(pwd)/${config}:/config.toml:ro \
       -v $BUILDTMP:/output \
-      -v /var/lib/containers/storage:/var/lib/containers/storage \
+      -v "$(sudo podman info --format '{{{{.Store.GraphRoot}}')":/var/lib/containers/storage \
       "${bib_image}" \
       ${args} \
       "${target_image}:${tag}"
