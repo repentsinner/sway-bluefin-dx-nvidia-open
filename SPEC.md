@@ -655,6 +655,12 @@ nothing, so the pull-request trigger never fired.
 config through `_build-bib`, so a local build exercises the path CI
 takes. BIB runs under rootful podman.
 
+BIB no longer pulls the image it is given — it reads it from local
+container storage and exits 125 otherwise. `_build-bib` depends on
+`_rootful_load_image`, which satisfies this. Invoking BIB by hand needs
+`sudo podman pull` first; the CI action pulls both the builder and the
+input image itself.
+
 ### Open questions
 
 - Does the ISO install without network access? Offline install from a
