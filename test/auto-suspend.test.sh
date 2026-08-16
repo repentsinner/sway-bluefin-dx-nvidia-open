@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-# Decision-matrix test for the S26 auto-suspend guard (R26.1).
+# Decision-matrix test for the §spec:auto-suspend auto-suspend guard (§spec:auto-suspend-guard).
 # Exercises the guard with overridden clock/flag/suspend-cmd so the
 # decision is verified without suspending the host.
 set -u
@@ -25,7 +25,7 @@ check() {
     fi
 }
 
-# Production mode: never auto-suspends (R25.5).
+# Production mode: never auto-suspends (§spec:production-no-idle-interrupt).
 check hold    "production + after-hours"   TILEFIN_PRODUCTION_FLAG="$PRODFLAG" TILEFIN_NOW_DOW=6 TILEFIN_NOW_HOUR=22
 check hold    "production + business hours" TILEFIN_PRODUCTION_FLAG="$PRODFLAG" TILEFIN_NOW_DOW=2 TILEFIN_NOW_HOUR=14
 

@@ -1,9 +1,9 @@
 [Unit]
-Description=Re-arm hypridle idle detection at the business-hours boundary (Tilefin S26)
+Description=Re-arm hypridle idle detection at the business-hours boundary (Tilefin §spec:auto-suspend)
 
 [Timer]
 # Fire at the end of business hours on weekdays so a machine that went
-# idle during the workday re-evaluates and can auto-suspend (R26.4).
+# idle during the workday re-evaluates and can auto-suspend (§spec:weekday-rearm).
 OnCalendar=Mon..Fri 18:00
 # A missed firing (machine off at 18:00) must not run on next boot — the
 # re-arm is only meaningful at the boundary itself.

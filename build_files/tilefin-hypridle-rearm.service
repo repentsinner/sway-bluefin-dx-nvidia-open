@@ -1,9 +1,9 @@
 [Unit]
-Description=Re-arm hypridle by restarting it (Tilefin S26)
+Description=Re-arm hypridle by restarting it (Tilefin §spec:auto-suspend)
 
 [Service]
 Type=oneshot
 # try-restart restarts hypridle only if it is already running, so this is
-# a no-op when no graphical session is active (R26.4). The restart begins
+# a no-op when no graphical session is active (§spec:weekday-rearm). The restart begins
 # a fresh idle countdown; an already-idle machine then suspends near 18:30.
 ExecStart=/usr/bin/systemctl --user try-restart hypridle.service

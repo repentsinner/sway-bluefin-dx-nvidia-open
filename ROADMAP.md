@@ -3,117 +3,152 @@
 Planned work derived from SPEC.md. Sections in build-dependency order.
 Completed work is removed — see CHANGELOG.md for history.
 
-## Dynamic GPU detection (S16)
+## Dynamic GPU detection §road:gpu-detection
 
-- **niri-gpu-detect**: Move Nvidia env vars from `niri-config.kdl` to
-  `niri-session.sh` behind a DRM connector detection check. Remove
-  `WLR_NO_HARDWARE_CURSORS`.
-  Files: `build_files/niri-config.kdl`, `build_files/niri-session.sh`.
+### Detect the Nvidia display in the session wrapper §road:niri-gpu-detect
 
-## Rivermax ST2110 streaming (S20)
+Move Nvidia env vars from `niri-config.kdl` to `niri-session.sh` behind
+a DRM connector detection check. Remove `WLR_NO_HARDWARE_CURSORS`.
+Files: `build_files/niri-config.kdl`, `build_files/niri-session.sh`.
+§spec:gpu-detection
 
-- **doca-roce-fedora-probe**: Throwaway Containerfile build stage that
-  attempts to install `doca-roce` from the Mellanox yum repo against
-  Fedora 42's kernel-devel. Determines whether DOCA kernel modules
-  compile on kernel 6.19+ with Fedora's glibc. Check `rpm -ql` output
-  for `nvidia-peermem.ko` and `mlx5_core.ko` to assess coexistence
-  with ublue `kmod-nvidia`. This gates all subsequent S20 work.
+## Rivermax ST2110 streaming §road:rivermax
 
-## Manual system suspend (S22)
+### Probe DOCA-RoCE against Fedora kernel-devel §road:doca-roce-fedora-probe
 
-- **manual-suspend**: Add Sleep button to nwg-bar power menu. Runs
-  `systemctl suspend`. Icon: `system-suspend.svg` (ships with nwg-bar).
-  Files: `build_files/nwg-bar.json`.
+Throwaway Containerfile build stage that attempts to install
+`doca-roce` from the Mellanox yum repo against Fedora 42's
+kernel-devel. Determines whether DOCA kernel modules compile on kernel
+6.19+ with Fedora's glibc. Check `rpm -ql` output for
+`nvidia-peermem.ko` and `mlx5_core.ko` to assess coexistence with ublue
+`kmod-nvidia`. This gates all subsequent §spec:rivermax work.
 
-## Dual-channel image publishing (S23)
+## Manual system suspend §road:manual-suspend
 
-- **build-needs-fix**: Fix `build_push` skip cascade on non-PR events.
-  The `changes` job is PR-only; `build_push` declares `needs: [changes]`
-  which causes it to skip on tag pushes, schedule, and workflow_dispatch.
-  Add `if: always()` to `build_push` and adjust the existing `if`
-  condition to handle the skipped `changes` output. Verify with a
-  `workflow_dispatch` or tag push that `build_push` runs.
-  Files: `.github/workflows/build.yml`.
+### Sleep button in the power menu §road:nwg-bar-sleep-button
 
-- **build-channel-tags**: Add a workflow step that reads `version.txt`
-  into a step output. Update `docker/metadata-action` tags: replace
-  `latest.YYYYMMDD` and bare `YYYYMMDD` with
-  `latest.v<version>.<YYYYMMDD>`. Add `stable` and `<version>` tags
-  for `v*` tag builds. Remove `<major>.<minor>` tag. Set
-  `org.opencontainers.image.version` label to semver.
-  Depends on **build-needs-fix**.
-  Files: `.github/workflows/build.yml`.
+Add Sleep button to nwg-bar power menu. Runs `systemctl suspend`. Icon:
+`system-suspend.svg` (ships with nwg-bar).
+Files: `build_files/nwg-bar.json`.
+§spec:nwg-bar-sleep
 
-- **build-push-gate**: Widen the push-to-GHCR and cosign-signing `if`
-  conditions to allow `refs/tags/v*` in addition to the default
-  branch. Depends on **build-channel-tags**.
-  Files: `.github/workflows/build.yml`.
+## Dual-channel image publishing §road:image-channels
 
-## EGL-Wayland platform plugin (S24)
+### Fix the build_push skip cascade §road:build-needs-fix
 
-- **egl-wayland-package**: Add `egl-wayland` to the `WAYLAND_CORE`
-  package group in `build_files/build.sh` so NVIDIA's EGL can handle
-  `EGL_PLATFORM_WAYLAND` display requests. Verifiable when the built
-  image contains `/usr/lib64/libnvidia-egl-wayland.so.1` and
-  `/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
-  No dependencies, but won't reach users until S23 republishes images.
-  Files: `build_files/build.sh`.
+Fix `build_push` skip cascade on non-PR events. The `changes` job is
+PR-only; `build_push` declares `needs: [changes]` which causes it to
+skip on tag pushes, schedule, and workflow_dispatch. Add
+`if: always()` to `build_push` and adjust the existing `if` condition to
+handle the skipped `changes` output.
+Files: `.github/workflows/build.yml`.
+§spec:build-push-all-events
 
-## Sunshine streaming server (S13)
+**Verify:** A `workflow_dispatch` or tag push runs `build_push`.
 
-- **sunshine-research**: Research Sunshine packaging on Fedora, Niri/
-  Wayland compatibility, and required system integrations (udev, KMS,
-  NVENC). Write spec requirements in S13 before implementation.
-  Blocked — requirements not yet specified. Unblocked when S13 spec
-  is written.
+### Semver provenance in image tags §road:build-channel-tags
 
-## Time-gated auto-suspend (S26)
+Add a workflow step that reads `version.txt` into a step output. Update
+`docker/metadata-action` tags: replace `latest.YYYYMMDD` and bare
+`YYYYMMDD` with `latest.v<version>.<YYYYMMDD>`. Add `stable` and
+`<version>` tags for `v*` tag builds. Remove `<major>.<minor>` tag. Set
+`org.opencontainers.image.version` label to semver. Depends on
+§road:build-needs-fix.
+Files: `.github/workflows/build.yml`.
+§spec:daily-tag-provenance §spec:oci-version-label
 
-- **auto-suspend-core**: Add the guard script that suspends via
-  `systemctl suspend` unless production-mode or business hours (Mon–Fri
-  08:00–18:00), with clock/flag/suspend-cmd overridable for tests
-  (R26.1); add a decision-matrix test covering the production, weekday,
-  weekend, and boundary cases; wire a 1800s hypridle listener to the
-  guard, replacing the commented-out auto-suspend block (R26.2).
-  Files: `build_files/auto-suspend.sh`, `test/auto-suspend.test.sh`,
-  `build_files/hypridle-niri.conf`, `build_files/build.sh`.
+### Widen the push and signing gate §road:build-push-gate
 
-- **hypridle-user-service**: Run hypridle as a systemd `--user` service,
-  started by niri `spawn-at-startup "systemctl" "--user" "start"
-  "hypridle.service"` (not bound to `graphical-session.target`, which
-  `niri --session` does not activate), so the daemon is restartable
-  (R26.3). Verify idle dim/lock/display-off still fire after the
-  conversion.
-  Files: `build_files/hypridle.service`, `build_files/niri-config.kdl`,
-  `build_files/build.sh`.
+Widen the push-to-GHCR and cosign-signing `if` conditions to allow
+`refs/tags/v*` in addition to the default branch. Depends on
+§road:build-channel-tags.
+Files: `.github/workflows/build.yml`.
+§spec:tag-builds-stable-channel
 
-- **hypridle-rearm-timer**: Add a systemd `--user` timer
-  (`OnCalendar=Mon-Fri 18:00`) and a timer-triggered service that
-  `try-restart`s hypridle to re-arm idle detection at the business-hours
-  boundary, enabling the timer image-wide via `systemctl --global enable`
-  (R26.4). Depends on **hypridle-user-service**.
-  Files: `build_files/tilefin-hypridle-rearm.timer`,
-  `build_files/tilefin-hypridle-rearm.service`, `build_files/build.sh`.
+## EGL-Wayland platform plugin §road:egl-wayland
 
-  **Verify:** Run `test/auto-suspend.test.sh` — all decision-matrix
-  cases pass. On the running image in development mode (no
-  `/etc/tilefin/production-mode`): `systemctl --user is-active hypridle`
-  reports active under the niri session; `systemctl --user list-timers`
-  shows `tilefin-hypridle-rearm` scheduled for the next Mon–Fri 18:00;
-  idle dim/lock/display-off still fire; nwg-bar Sleep and `Mod+Shift+L`
-  suspend on demand at any time. Enable production mode and confirm the
-  idle listener no longer suspends.
+### Ship egl-wayland in the image §road:egl-wayland-package
 
-## GPUDirect Storage over network filesystems (S29)
+Add `egl-wayland` to the `WAYLAND_CORE` package group in
+`build_files/build.sh` so NVIDIA's EGL can handle
+`EGL_PLATFORM_WAYLAND` display requests. No dependencies, but does not
+reach users until §road:image-channels republishes images.
+Files: `build_files/build.sh`.
+§spec:egl-wayland-installed
 
-- **nvfs-network-fs**: Build and ship `nvidia-fs.ko` so the `nvfs` path
-  is available for distributed filesystems — Lustre, WekaFS, EXAScaler,
-  GPFS, NFS over RDMA. The delivered S29 configuration cannot reach
-  them: `p2pdma` covers NVMe block devices only, and NVIDIA scopes the
-  no-module exemption to "mounts of NVMe (local or with NVIDIA DOCA
-  SNAP)". No amount of tuning the shipped setup substitutes.
-  Blocked — no such workload yet. The build recipe (one driver header,
-  symbol CRCs from the shipped `nvidia.ko`, `kernel-devel` from
-  `updates-archive`) and the three standing costs are recorded in
-  S29 → Deferred. Likely coupled to the DOCA-on-Fedora blocker that
-  gates S20; verify that before planning around it.
+**Verify:** The built image contains
+`/usr/lib64/libnvidia-egl-wayland.so.1` and
+`/usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json`.
+
+## Sunshine streaming server §road:sunshine
+
+### Research Sunshine on Fedora and Niri §road:sunshine-research
+
+Research Sunshine packaging on Fedora, Niri/Wayland compatibility, and
+required system integrations (udev, KMS, NVENC). Write spec
+requirements in §spec:sunshine before implementation. Blocked —
+requirements not yet specified. Unblocked when the §spec:sunshine
+requirements are written.
+
+## Time-gated auto-suspend §road:auto-suspend
+
+### Guard script and idle listener §road:auto-suspend-core
+
+Add the guard script that suspends via `systemctl suspend` unless
+production-mode or business hours (Mon–Fri 08:00–18:00), with
+clock/flag/suspend-cmd overridable for tests (§spec:auto-suspend-guard);
+add a decision-matrix test covering the production, weekday, weekend,
+and boundary cases; wire a 1800s hypridle listener to the guard,
+replacing the commented-out auto-suspend block
+(§spec:idle-suspend-listener).
+Files: `build_files/auto-suspend.sh`, `test/auto-suspend.test.sh`,
+`build_files/hypridle-niri.conf`, `build_files/build.sh`.
+
+### hypridle as a systemd user service §road:hypridle-user-service
+
+Run hypridle as a systemd `--user` service, started by niri
+`spawn-at-startup "systemctl" "--user" "start" "hypridle.service"` (not
+bound to `graphical-session.target`, which `niri --session` does not
+activate), so the daemon is restartable
+(§spec:hypridle-user-service).
+Files: `build_files/hypridle.service`, `build_files/niri-config.kdl`,
+`build_files/build.sh`.
+
+**Verify:** Idle dim, lock, and display-off still fire after the
+conversion.
+
+### Weekday re-arm timer §road:hypridle-rearm-timer
+
+Add a systemd `--user` timer (`OnCalendar=Mon-Fri 18:00`) and a
+timer-triggered service that `try-restart`s hypridle to re-arm idle
+detection at the business-hours boundary, enabling the timer image-wide
+via `systemctl --global enable` (§spec:weekday-rearm). Depends on
+§road:hypridle-user-service.
+Files: `build_files/tilefin-hypridle-rearm.timer`,
+`build_files/tilefin-hypridle-rearm.service`, `build_files/build.sh`.
+
+**Verify:** Run `test/auto-suspend.test.sh` — all decision-matrix cases
+pass. On the running image in development mode (no
+`/etc/tilefin/production-mode`): `systemctl --user is-active hypridle`
+reports active under the niri session; `systemctl --user list-timers`
+shows `tilefin-hypridle-rearm` scheduled for the next Mon–Fri 18:00;
+idle dim/lock/display-off still fire; nwg-bar Sleep and `Mod+Shift+L`
+suspend on demand at any time. Enable production mode and confirm the
+idle listener no longer suspends.
+
+## GPUDirect Storage over network filesystems §road:gpudirect-storage
+
+### Build and ship nvidia-fs.ko §road:nvfs-network-fs
+
+Build and ship `nvidia-fs.ko` so the `nvfs` path is available for
+distributed filesystems — Lustre, WekaFS, EXAScaler, GPFS, NFS over
+RDMA. The delivered §spec:gpudirect-storage configuration cannot reach
+them: `p2pdma` covers NVMe block devices only, and NVIDIA scopes the
+no-module exemption to "mounts of NVMe (local or with NVIDIA DOCA
+SNAP)". No amount of tuning the shipped setup substitutes.
+
+Blocked — no such workload yet. The build recipe (one driver header,
+symbol CRCs from the shipped `nvidia.ko`, `kernel-devel` from
+`updates-archive`) and the three standing costs are recorded under
+§spec:gpudirect-storage. Likely coupled to the DOCA-on-Fedora blocker
+that gates §spec:rivermax; verify that before planning around it.
