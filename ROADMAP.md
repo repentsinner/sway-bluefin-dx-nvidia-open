@@ -136,6 +136,32 @@ idle dim/lock/display-off still fire; nwg-bar Sleep and `Mod+Shift+L`
 suspend on demand at any time. Enable production mode and confirm the
 idle listener no longer suspends.
 
+## Cross-release bootc switch §road:cross-release-switch
+
+### Identify what re-applies the store label §road:selinux-relabel-writer
+
+Establish what writes `semanage_store_t` onto `/etc/selinux/targeted`
+after `restorecon` has corrected it. A relabel pass touching `mtab`,
+`os-release`, `resolv.conf`, `credstore`, `pam.d`, `polkit-1/rules.d`
+and `selinux/targeted` runs within a single coarse-clock tick early in
+boot; no systemd unit in the image invokes `semodule`, `semanage`,
+`setsebool`, `restorecon` or `fixfiles`, so the writer is elsewhere.
+Candidates not yet excluded: PID 1's own early relabel, libsemanage
+recovery of the interrupted transaction whose `tmp` and `final`
+directories are present, and the ostree deployment path.
+§spec:cross-release-switch
+
+Retest the switch first. §spec:base-image now tracks `:latest`, so a
+switch from Bluefin `:stable` is Fedora 44 onto Fedora 44 rather than
+backwards across a release. That costs one reboot on mr-plywood and
+may retire this workstream outright.
+
+**Verify:** If the same-release switch still mislabels the store, an
+audit watch (`-w /etc/selinux/targeted -p a`) or equivalent names the
+writing process across a boot. The finding either identifies a repair
+that survives, or establishes that switching onto this image is
+unsupportable and install media is the only path.
+
 ## GPUDirect Storage over network filesystems §road:gpudirect-storage
 
 ### Build and ship nvidia-fs.ko §road:nvfs-network-fs
