@@ -608,53 +608,58 @@ The `org.opencontainers.image.version` label is set to the value of
 
 ### Problem
 
-The image is consumed via `bootc switch` from a running Fedora system.
-This requires an existing installation to migrate from — there is no
-path to bare-metal install on a new machine.
+The image is consumed via `bootc switch` from a running Fedora system,
+which requires an existing installation to migrate from. That migration
+carries the previous system's `/etc` forward through a three-way merge,
+which is where §spec:cross-release-switch went wrong. There is no path
+to a bare-metal install on a new machine.
 
 ### Design
 
-bootc-image-builder (BIB) produces installable disk images from the
-container image. Two ISO types serve different use cases:
+bootc-image-builder (BIB) produces installable media from the container
+image. BIB offers `anaconda-iso`, `bootc-installer` and `iso` types.
+This image builds `anaconda-iso`: it runs the Anaconda installer, so
+the operator partitions the disk and creates the account interactively,
+which is what provisioning bare metal needs.
 
-| Type | Config | Network | Use case |
-| --- | --- | --- | --- |
-| `iso` (bootc-installer) | `disk_config/iso.toml` | Not required | Offline install from USB/Ventoy. Image embedded in ISO. |
-| `anaconda-iso` | `disk_config/anaconda-iso.toml` | Required | Interactive Anaconda installer. Pulls image from GHCR at install time. |
+BIB generates the `ostreecontainer` kickstart command that installs
+this image. A custom kickstart replaces the generated one wholesale, so
+`disk_config/iso.toml` supplies no kickstart and configures only which
+Anaconda D-Bus modules start. The configs inherited from the upstream
+image-template carried a kickstart that ran
+`bootc switch ... ghcr.io/ublue-os/image-template:latest`, installing
+the template rather than this image; they are removed.
 
-Offline-first: the `iso` type is the primary install path. A user
-copies the ISO to a Ventoy USB drive and boots it. No network, no
-intermediate OS, no migration step.
+The builder tracks `quay.io/centos-bootc/bootc-image-builder:latest`.
+The previous pin, `ghcr.io/lorbuschris/bootc-image-builder:20250608`,
+returns 403 and can no longer be pulled.
 
-The Anaconda ISO provides a graphical installer with disk, user,
-timezone, and network configuration. It suits environments where
-network access is available and interactive setup is preferred.
+### Anaconda installer ISO §spec:iso-anaconda
 
-Both types use a 20 GiB minimum root filesystem on btrfs.
+`disk_config/iso.toml` enables the Storage, Runtime, Network, Security,
+Services, Users and Timezone Anaconda modules, and disables
+Subscription, which is Red Hat entitlement handling. Builds pass
+`--rootfs=btrfs`.
 
-### Offline bootc-installer ISO §spec:iso-offline
+### CI builds the ISO §spec:ci-builds-iso-types
 
-BIB produces an `iso` type image that embeds the full container image.
-The ISO is bootable without network access.
+The `build-disk.yml` matrix builds `qcow2` and `anaconda-iso`. Builds
+run on `workflow_dispatch` and on pull requests touching `disk_config/`
+or the workflow itself. Path filters are relative to the repository
+root and carry no `./` prefix; the earlier prefixed patterns matched
+nothing, so the pull-request trigger never fired.
 
-### Anaconda ISO §spec:iso-anaconda
+### Local build recipe §spec:local-build-recipes
 
-BIB produces an `anaconda-iso` type image with a graphical Anaconda
-installer. The RHEL Subscription module is disabled. All other
-Anaconda modules use their defaults.
+`just build-iso` builds the same `anaconda-iso` type from the same
+config through `_build-bib`, so a local build exercises the path CI
+takes. BIB runs under rootful podman.
 
-### CI builds both types §spec:ci-builds-iso-types
+### Open questions
 
-The `build-disk.yml` workflow matrix includes `iso` and `anaconda-iso`
-alongside `qcow2`. Each type maps to its own config file. Builds run
-on `workflow_dispatch` and on PRs that touch disk config or the
-workflow itself.
-
-### Local build recipes §spec:local-build-recipes
-
-The Justfile provides `build-iso` (offline) and `build-anaconda-iso`
-(network) recipes. Both delegate to BIB via `_build-bib` with the
-appropriate type and config file.
+- Does the ISO install without network access? Offline install from a
+  Ventoy USB is the intended use, and whether BIB embeds the image or
+  fetches it at install time has not been tested here.
 
 ## Video capture kernel module §spec:decklink-capture
 

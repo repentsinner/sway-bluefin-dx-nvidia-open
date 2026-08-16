@@ -1,0 +1,29 @@
+# Interactive installer ISO, built by bootc-image-builder's `anaconda-iso`
+# type. Boot it from USB and install to bare metal.
+#
+# No [customizations.installer.kickstart] block on purpose. bootc-image-builder
+# generates the `ostreecontainer` command that installs this image, and a
+# custom kickstart replaces the generated one wholesale — every other command
+# (partitioning, language, users) would then have to be reproduced by hand.
+# The upstream image-template ships a kickstart that runs
+# `bootc switch ... ghcr.io/ublue-os/image-template:latest`; that line installs
+# the template rather than this image and has no place here.
+#
+# Anaconda ships as a set of D-Bus modules and only the ones enabled here are
+# started. Storage partitions the disk, Users creates the account, and Network
+# configures the interface — an install cannot complete without them.
+# Subscription is Red Hat entitlement handling and does not apply to Fedora.
+
+[customizations.installer.modules]
+enable = [
+  "org.fedoraproject.Anaconda.Modules.Storage",
+  "org.fedoraproject.Anaconda.Modules.Runtime",
+  "org.fedoraproject.Anaconda.Modules.Network",
+  "org.fedoraproject.Anaconda.Modules.Security",
+  "org.fedoraproject.Anaconda.Modules.Services",
+  "org.fedoraproject.Anaconda.Modules.Users",
+  "org.fedoraproject.Anaconda.Modules.Timezone",
+]
+disable = [
+  "org.fedoraproject.Anaconda.Modules.Subscription",
+]
