@@ -3,8 +3,11 @@ FROM scratch AS ctx
 COPY build_files /
 
 # Base Image: Universal Blue base with Nvidia open kernel modules
+# Tracks :latest (current Fedora), not :gts (Fedora N-1). The hyprland
+# ecosystem COPRs that supply hyprlock and hypridle stopped building for
+# N-1, and cliphist reaches Fedora proper only from 44.
 # No desktop environment — we add niri + wayland stack in build.sh
-FROM ghcr.io/ublue-os/base-nvidia:gts
+FROM ghcr.io/ublue-os/base-nvidia:latest
 
 ### MODIFICATIONS
 ## make modifications desired in your image and install packages by modifying the build.sh script

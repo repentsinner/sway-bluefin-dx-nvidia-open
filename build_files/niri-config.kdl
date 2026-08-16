@@ -90,7 +90,9 @@ environment {
 spawn-at-startup "lxpolkit"
 spawn-at-startup "mako"
 spawn-at-startup "waybar"
-spawn-at-startup "swww-daemon"
+// swaybg paints a solid base colour; swww is no longer packaged for any
+// current Fedora. Matches the waybar surface colour (Catppuccin base).
+spawn-at-startup "swaybg" "-m" "solid_color" "-c" "1e1e2e"
 // hypridle runs as a --user service so the S26 re-arm timer can restart
 // it; the imported session env lets it reach the compositor (R26.3).
 spawn-at-startup "systemctl" "--user" "start" "hypridle.service"

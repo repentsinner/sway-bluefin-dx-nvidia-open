@@ -43,7 +43,7 @@ The base image (`base-nvidia:gts`) provides Fedora, Nvidia open kernel modules, 
 - **Notifications**: Mako
 - **Screenshots**: Grim and Slurp
 - **Screen Recording**: wf-recorder
-- **Wallpaper**: swww
+- **Wallpaper**: swaybg
 - **File Manager**: Thunar
 - **Display Management**: wdisplays
 - **Utilities**: wl-clipboard, cliphist, pamixer, brightnessctl
