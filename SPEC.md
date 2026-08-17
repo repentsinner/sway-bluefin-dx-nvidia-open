@@ -622,13 +622,33 @@ This image builds `anaconda-iso`: it runs the Anaconda installer, so
 the operator partitions the disk and creates the account interactively,
 which is what provisioning bare metal needs.
 
-BIB generates the `ostreecontainer` kickstart command that installs
-this image. A custom kickstart replaces the generated one wholesale, so
-`disk_config/iso.toml` supplies no kickstart and configures only which
-Anaconda D-Bus modules start. The configs inherited from the upstream
-image-template carried a kickstart that ran
-`bootc switch ... ghcr.io/ublue-os/image-template:latest`, installing
-the template rather than this image; they are removed.
+**The kickstart is what makes the installer interactive.** Given no
+kickstart of its own, BIB generates a complete one and the ISO installs
+unattended: `clearpart --all` with no drive restriction, root locked,
+no user created, reboot. That erases every attached disk and leaves a
+system nobody can log into. It did exactly that on 2026-08-17.
+
+Supplying `[customizations.installer.kickstart] contents` changes the
+contract. BIB then adds only the `ostreecontainer` command, so every
+other directive is the image's — and every directive omitted becomes a
+screen Anaconda stops on. `disk_config/iso.toml` omits partitioning and
+account creation so the operator chooses the target disk and sets
+credentials. Adding `clearpart`, `autopart`, `part`, `ignoredisk`,
+`rootpw` or `user` silently removes an interactive step.
+
+The kickstart also re-points the installed system's origin. Installation
+reads the image from the OCI archive on the media, recording
+`/run/install/repo/container` as the origin — a path that ceases to
+exist once the media is removed, which breaks `bootc upgrade`. A
+`%post` runs `bootc switch --mutate-in-place --transport registry`
+against the published image. The configs inherited from the upstream
+image-template carried that same `%post`, pointing at
+`ghcr.io/ublue-os/image-template`; the mechanism was right and only the
+target was wrong.
+
+The install runs offline. `ostreecontainer` reads the image from
+`/run/install/repo/container` over the `oci` transport, so the media
+carries the image and no registry is contacted during installation.
 
 The builder tracks `quay.io/centos-bootc/bootc-image-builder:latest`.
 The previous pin, `ghcr.io/lorbuschris/bootc-image-builder:20250608`,
@@ -638,8 +658,13 @@ returns 403 and can no longer be pulled.
 
 `disk_config/iso.toml` enables the Storage, Runtime, Network, Security,
 Services, Users and Timezone Anaconda modules, and disables
-Subscription, which is Red Hat entitlement handling. Builds pass
-`--rootfs=btrfs`.
+Subscription, which is Red Hat entitlement handling. Storage backs the
+disk-selection screen and Users the account screen, so the interactive
+install depends on both. Builds pass `--rootfs=btrfs`.
+
+Booting the ISO stops at Anaconda without writing to any disk until the
+operator selects a destination. The generated kickstart contains no
+`clearpart`, `autopart`, `rootpw` or `user`.
 
 ### CI builds the ISO §spec:ci-builds-iso-types
 
@@ -668,11 +693,21 @@ does, mounting the default path presents an empty store and BIB reports
 `image not known` for an image that is present. `_build-bib` resolves
 the path from `podman info` rather than assuming it.
 
-### Open questions
+### Verification §spec:iso-verification
 
-- Does the ISO install without network access? Offline install from a
-  Ventoy USB is the intended use, and whether BIB embeds the image or
-  fetches it at install time has not been tested here.
+An installer that erases disks is verified before it reaches hardware,
+not after. Two checks, both cheap:
+
+- Read the generated kickstart out of the build manifest's
+  `org.osbuild.kickstart` stage and confirm no `clearpart`, `autopart`,
+  `rootpw` or `user`.
+- Boot the ISO in a VM against a blank disk and confirm it writes
+  nothing while it waits. `just run-vm-iso` exists for this; a plain
+  `qemu-system-x86_64` with a raw file and OVMF works equally well.
+
+The unattended build was declared sound on artifact properties alone —
+bootable, correct size, image embedded, checksum implanted — none of
+which say what it does when it boots.
 
 ## Video capture kernel module §spec:decklink-capture
 
