@@ -1,18 +1,26 @@
 # Interactive installer ISO, built by bootc-image-builder's `anaconda-iso`
 # type. Boot it from USB and install to bare metal.
 #
-# No [customizations.installer.kickstart] block on purpose. bootc-image-builder
-# generates the `ostreecontainer` command that installs this image, and a
-# custom kickstart replaces the generated one wholesale — every other command
-# (partitioning, language, users) would then have to be reproduced by hand.
-# The upstream image-template ships a kickstart that runs
-# `bootc switch ... ghcr.io/ublue-os/image-template:latest`; that line installs
-# the template rather than this image and has no place here.
+# THE KICKSTART IS WHAT MAKES THIS INTERACTIVE.
+#
+# Without a kickstart of our own, bootc-image-builder generates a complete one
+# and the ISO installs unattended: it sets `clearpart --all` with no drive
+# restriction, locks root, creates no user, and reboots. That erases every
+# attached disk and produces a system nobody can log in to.
+#
+# Supplying `contents` changes the contract. BIB then adds only the
+# `ostreecontainer` command and nothing else, so every directive below is ours
+# — and, more importantly, every directive we OMIT becomes a screen Anaconda
+# stops on. Partitioning and account creation are omitted deliberately: the
+# operator picks the target disk and sets credentials.
+#
+# Do not add clearpart, autopart, part, ignoredisk, rootpw or user here
+# without meaning to. Each one silently removes an interactive step.
 #
 # Anaconda ships as a set of D-Bus modules and only the ones enabled here are
-# started. Storage partitions the disk, Users creates the account, and Network
-# configures the interface — an install cannot complete without them.
-# Subscription is Red Hat entitlement handling and does not apply to Fedora.
+# started. Storage backs the disk-selection screen and Users the account
+# screen, so the interactive install depends on both. Subscription is Red Hat
+# entitlement handling and does not apply to Fedora.
 
 [customizations.installer.modules]
 enable = [
@@ -27,3 +35,22 @@ enable = [
 disable = [
   "org.fedoraproject.Anaconda.Modules.Subscription",
 ]
+
+[customizations.installer.kickstart]
+contents = """
+# Locale and network only. Partitioning and accounts are omitted so that
+# Anaconda prompts for them — see the comment above before adding anything.
+lang en_US.UTF-8
+keyboard us
+timezone UTC
+network --bootproto=dhcp --device=link --activate --onboot=on
+
+%post --erroronfail
+set -e
+# ostreecontainer installs from the OCI archive on the ISO, so the installed
+# system's origin points at /run/install/repo/container, which does not exist
+# once the media is removed. Re-point it at the registry so `bootc upgrade`
+# works on the installed system.
+bootc switch --mutate-in-place --transport registry ghcr.io/repentsinner/tilefin-nvidia-open:latest
+%end
+"""
