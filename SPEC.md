@@ -608,53 +608,106 @@ The `org.opencontainers.image.version` label is set to the value of
 
 ### Problem
 
-The image is consumed via `bootc switch` from a running Fedora system.
-This requires an existing installation to migrate from — there is no
-path to bare-metal install on a new machine.
+The image is consumed via `bootc switch` from a running Fedora system,
+which requires an existing installation to migrate from. That migration
+carries the previous system's `/etc` forward through a three-way merge,
+which is where §spec:cross-release-switch went wrong. There is no path
+to a bare-metal install on a new machine.
 
 ### Design
 
-bootc-image-builder (BIB) produces installable disk images from the
-container image. Two ISO types serve different use cases:
+bootc-image-builder (BIB) produces installable media from the container
+image. BIB offers `anaconda-iso`, `bootc-installer` and `iso` types.
+This image builds `anaconda-iso`: it runs the Anaconda installer, so
+the operator partitions the disk and creates the account interactively,
+which is what provisioning bare metal needs.
 
-| Type | Config | Network | Use case |
-| --- | --- | --- | --- |
-| `iso` (bootc-installer) | `disk_config/iso.toml` | Not required | Offline install from USB/Ventoy. Image embedded in ISO. |
-| `anaconda-iso` | `disk_config/anaconda-iso.toml` | Required | Interactive Anaconda installer. Pulls image from GHCR at install time. |
+**The kickstart is what makes the installer interactive.** Given no
+kickstart of its own, BIB generates a complete one and the ISO installs
+unattended: `clearpart --all` with no drive restriction, root locked,
+no user created, reboot. That erases every attached disk and leaves a
+system nobody can log into. It did exactly that on 2026-08-17.
 
-Offline-first: the `iso` type is the primary install path. A user
-copies the ISO to a Ventoy USB drive and boots it. No network, no
-intermediate OS, no migration step.
+Supplying `[customizations.installer.kickstart] contents` changes the
+contract. BIB then adds only the `ostreecontainer` command, so every
+other directive is the image's — and every directive omitted becomes a
+screen Anaconda stops on. `disk_config/iso.toml` omits partitioning and
+account creation so the operator chooses the target disk and sets
+credentials. Adding `clearpart`, `autopart`, `part`, `ignoredisk`,
+`rootpw` or `user` silently removes an interactive step.
 
-The Anaconda ISO provides a graphical installer with disk, user,
-timezone, and network configuration. It suits environments where
-network access is available and interactive setup is preferred.
+The kickstart also re-points the installed system's origin. Installation
+reads the image from the OCI archive on the media, recording
+`/run/install/repo/container` as the origin — a path that ceases to
+exist once the media is removed, which breaks `bootc upgrade`. A
+`%post` runs `bootc switch --mutate-in-place --transport registry`
+against the published image. The configs inherited from the upstream
+image-template carried that same `%post`, pointing at
+`ghcr.io/ublue-os/image-template`; the mechanism was right and only the
+target was wrong.
 
-Both types use a 20 GiB minimum root filesystem on btrfs.
+The install runs offline. `ostreecontainer` reads the image from
+`/run/install/repo/container` over the `oci` transport, so the media
+carries the image and no registry is contacted during installation.
 
-### Offline bootc-installer ISO §spec:iso-offline
+The builder tracks `quay.io/centos-bootc/bootc-image-builder:latest`.
+The previous pin, `ghcr.io/lorbuschris/bootc-image-builder:20250608`,
+returns 403 and can no longer be pulled.
 
-BIB produces an `iso` type image that embeds the full container image.
-The ISO is bootable without network access.
+### Anaconda installer ISO §spec:iso-anaconda
 
-### Anaconda ISO §spec:iso-anaconda
+`disk_config/iso.toml` enables the Storage, Runtime, Network, Security,
+Services, Users and Timezone Anaconda modules, and disables
+Subscription, which is Red Hat entitlement handling. Storage backs the
+disk-selection screen and Users the account screen, so the interactive
+install depends on both. Builds pass `--rootfs=btrfs`.
 
-BIB produces an `anaconda-iso` type image with a graphical Anaconda
-installer. The RHEL Subscription module is disabled. All other
-Anaconda modules use their defaults.
+Booting the ISO stops at Anaconda without writing to any disk until the
+operator selects a destination. The generated kickstart contains no
+`clearpart`, `autopart`, `rootpw` or `user`.
 
-### CI builds both types §spec:ci-builds-iso-types
+### CI builds the ISO §spec:ci-builds-iso-types
 
-The `build-disk.yml` workflow matrix includes `iso` and `anaconda-iso`
-alongside `qcow2`. Each type maps to its own config file. Builds run
-on `workflow_dispatch` and on PRs that touch disk config or the
-workflow itself.
+The `build-disk.yml` matrix builds `qcow2` and `anaconda-iso`. Builds
+run on `workflow_dispatch` and on pull requests touching `disk_config/`
+or the workflow itself. Path filters are relative to the repository
+root and carry no `./` prefix; the earlier prefixed patterns matched
+nothing, so the pull-request trigger never fired.
 
-### Local build recipes §spec:local-build-recipes
+### Local build recipe §spec:local-build-recipes
 
-The Justfile provides `build-iso` (offline) and `build-anaconda-iso`
-(network) recipes. Both delegate to BIB via `_build-bib` with the
-appropriate type and config file.
+`just build-iso` builds the same `anaconda-iso` type from the same
+config through `_build-bib`, so a local build exercises the path CI
+takes. BIB runs under rootful podman.
+
+BIB no longer pulls the image it is given — it reads it from local
+container storage and exits 125 otherwise. `_build-bib` depends on
+`_rootful_load_image`, which satisfies this. Invoking BIB by hand needs
+`sudo podman pull` first; the CI action pulls both the builder and the
+input image itself.
+
+BIB reads that storage from `/var/lib/containers/storage` inside its
+container, so the mount has to point at the graphroot podman actually
+uses. `/etc/containers/storage.conf` may relocate it — on a host that
+does, mounting the default path presents an empty store and BIB reports
+`image not known` for an image that is present. `_build-bib` resolves
+the path from `podman info` rather than assuming it.
+
+### Verification §spec:iso-verification
+
+An installer that erases disks is verified before it reaches hardware,
+not after. Two checks, both cheap:
+
+- Read the generated kickstart out of the build manifest's
+  `org.osbuild.kickstart` stage and confirm no `clearpart`, `autopart`,
+  `rootpw` or `user`.
+- Boot the ISO in a VM against a blank disk and confirm it writes
+  nothing while it waits. `just run-vm-iso` exists for this; a plain
+  `qemu-system-x86_64` with a raw file and OVMF works equally well.
+
+The unattended build was declared sound on artifact properties alone —
+bootable, correct size, image embedded, checksum implanted — none of
+which say what it does when it boots.
 
 ## Video capture kernel module §spec:decklink-capture
 

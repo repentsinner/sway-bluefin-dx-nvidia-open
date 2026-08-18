@@ -19,15 +19,17 @@ on:
     branches:
       - main
     paths:
-      - './disk_config/disk.toml'
-      - './disk_config/iso.toml'
-      - './.github/workflows/build-disk.yml'
+      - 'disk_config/**'
+      - '.github/workflows/build-disk.yml'
 
 env:
   IMAGE_NAME: ${{ github.event.repository.name }} # output of build.yml, keep in sync
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"  # do not edit
   DEFAULT_TAG: "latest"
-  BIB_IMAGE: "ghcr.io/lorbuschris/bootc-image-builder:20250608" # "quay.io/centos-bootc/bootc-image-builder:latest" - see https://github.com/osbuild/bootc-image-builder/pull/954
+  # Was pinned to ghcr.io/lorbuschris/bootc-image-builder:20250608 for
+  # https://github.com/osbuild/bootc-image-builder/pull/954; that image now
+  # returns 403 and cannot be pulled, so track upstream.
+  BIB_IMAGE: "quay.io/centos-bootc/bootc-image-builder:latest"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
@@ -36,7 +38,12 @@ concurrency:
 jobs:
   build:
     name: Build disk images
-    runs-on: ${{ inputs.platform == 'amd64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
+    # inputs.platform exists only for workflow_dispatch. On pull_request it
+    # is empty, so this has to default to amd64: the previous form tested
+    # == 'amd64' and fell through to the arm64 runner on every PR, where
+    # bootc-image-builder cannot create a container from this amd64-only
+    # image and reports "no such container".
+    runs-on: ${{ inputs.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
@@ -82,11 +89,20 @@ jobs:
         uses: osbuild/bootc-image-builder-action@main
         with:
           builder-image: ${{ env.BIB_IMAGE }}
-          config-file: ${{ matrix.disk-type == 'anaconda-iso' && './disk_config/iso.toml' || './disk_config/disk.toml' }}
+          # Absolute path on purpose. The action passes this straight to
+          # `podman --volume <path>:/config.toml`, and podman reads a bare
+          # relative path as a volume NAME rather than a host path, failing
+          # with "names must match [a-zA-Z0-9]" because of the slash.
+          config-file: ${{ github.workspace }}/disk_config/${{ matrix.disk-type == 'anaconda-iso' && 'iso.toml' || 'disk.toml' }}
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
           chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
           types: ${{ matrix.disk-type }}
-          additional-args: --use-librepo=True
+          # --rootfs is required: without it BIB tries to derive the rootfs
+          # type by mounting the image, and fails that path with a
+          # misleading "no such container". The Justfile has always passed
+          # it; CI did not, which is why local builds worked and this did
+          # not the first time it ran.
+          additional-args: --use-librepo=True --rootfs=btrfs
 
       - name: Upload disk images and Checksum to Job Artifacts
         if: inputs.upload-to-s3 != true && github.event_name != 'pull_request'
@@ -113,3 +129,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rclone
           rclone copy $SOURCE_DIR S3:${{ secrets.S3_BUCKET_NAME }}
+
+      - name: Diagnose build failure
+        if: failure()
+        run: |
+          echo "::group::AppArmor state"
+          sudo aa-status --json 2>/dev/null | head -c 2000 || sudo aa-status | head -20 || true
+          echo "::endgroup::"
+          echo "::group::Kernel denials"
+          sudo dmesg | grep -iE 'apparmor|audit|denied' | tail -40 || true
+          echo "::endgroup::"
+          echo "::group::storage backing"
+          df -hT /var/lib/containers/storage 2>/dev/null || true
+          findmnt -no FSTYPE,SOURCE,TARGET /var/lib/containers/storage 2>/dev/null || true
+          stat -f -c 'fstype=%T' /var/lib/containers/storage 2>/dev/null || true
+          uname -r
+          echo "::endgroup::"
+          echo "::group::podman"
+          podman version; sudo podman info --format '{{.Host.Security}}' || true
+          echo "::endgroup::"
