@@ -84,7 +84,11 @@ jobs:
         uses: osbuild/bootc-image-builder-action@main
         with:
           builder-image: ${{ env.BIB_IMAGE }}
-          config-file: ${{ matrix.disk-type == 'anaconda-iso' && 'disk_config/iso.toml' || 'disk_config/disk.toml' }}
+          # Absolute path on purpose. The action passes this straight to
+          # `podman --volume <path>:/config.toml`, and podman reads a bare
+          # relative path as a volume NAME rather than a host path, failing
+          # with "names must match [a-zA-Z0-9]" because of the slash.
+          config-file: ${{ github.workspace }}/disk_config/${{ matrix.disk-type == 'anaconda-iso' && 'iso.toml' || 'disk.toml' }}
           image: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.DEFAULT_TAG }}
           chown: ${{ env.USER_UID }}:${{ env.USER_GID }}
           types: ${{ matrix.disk-type }}
