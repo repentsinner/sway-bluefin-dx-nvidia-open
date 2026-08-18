@@ -666,6 +666,15 @@ Booting the ISO stops at Anaconda without writing to any disk until the
 operator selects a destination. The generated kickstart contains no
 `clearpart`, `autopart`, `rootpw` or `user`.
 
+The installer does not ask for a hostname. Anaconda keeps that field
+inside the Network spoke, and the kickstart's `network` line satisfies
+that spoke, so it is never flagged and the field is never seen. An
+installed machine therefore has no static hostname: the greeter falls
+back to the kernel default and announces it as `fedora`, while the name
+it answers to on the network comes from a DHCP lease. `ujust setup-user`
+prompts for it (§spec:ujust-setup-user), defaulting to the transient
+name, which is the first point after install where a human is present.
+
 ### CI builds the ISO §spec:ci-builds-iso-types
 
 The `build-disk.yml` matrix builds `qcow2` and `anaconda-iso`. Builds

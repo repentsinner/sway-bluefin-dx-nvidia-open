@@ -5,6 +5,22 @@ setup-user image="":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # Static hostname. The installer never asks: Anaconda keeps the hostname
+    # field inside the Network spoke, which the ISO kickstart already
+    # satisfies, so the spoke is never flagged and the field is never seen.
+    # Without a static hostname the greeter falls back to the kernel default
+    # and announces the machine as "fedora", and the only name it answers to
+    # comes from a DHCP lease rather than from the machine itself.
+    CURRENT_STATIC=$(hostnamectl --static 2>/dev/null || true)
+    CURRENT_TRANSIENT=$(hostnamectl --transient 2>/dev/null | cut -d. -f1 || true)
+    HOSTNAME_NEW=$(gum input --header="Static hostname" \
+        --value="${CURRENT_STATIC:-${CURRENT_TRANSIENT:-tilefin}}")
+    if [ -n "$HOSTNAME_NEW" ] && [ "$HOSTNAME_NEW" != "$CURRENT_STATIC" ]; then
+        echo "==> Setting static hostname to ${HOSTNAME_NEW} (needs sudo)..."
+        sudo hostnamectl set-hostname "$HOSTNAME_NEW"
+    fi
+
+    echo ""
     echo "Select components to install (space to toggle, enter to confirm):"
     echo ""
 
