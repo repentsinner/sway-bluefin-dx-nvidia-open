@@ -2,13 +2,6 @@
 # Niri session wrapper
 # Sets up environment before starting niri
 
-# XDG user directories (§spec:xdg-user-dirs)
-# Run here rather than via the packaged xdg-user-dirs.service: that unit is
-# WantedBy=graphical-session-pre.target, and niri --session does not activate
-# it (same constraint as hypridle, §spec:hypridle-user-service). Synchronous,
-# so ~/Downloads and friends exist before any Flatpak starts.
-xdg-user-dirs-update
-
 # Bitwarden SSH agent socket
 export SSH_AUTH_SOCK="$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock"
 
@@ -39,4 +32,11 @@ if [ "$nvidia_has_display" = true ]; then
     export LIBVA_DRIVER_NAME="nvidia"
 fi
 
-exec niri --session
+# Hand off to niri-session, which starts niri.service and so activates
+# graphical-session-pre.target, graphical-session.target and
+# xdg-desktop-autostart.target (§spec:session-targets). Running
+# `niri --session` directly leaves all three inactive, which silently
+# disables xdg-user-dirs.service, xdg-desktop-portal and every autostart
+# entry. niri-session re-execs through a login shell, so exports above
+# survive into the session.
+exec niri-session

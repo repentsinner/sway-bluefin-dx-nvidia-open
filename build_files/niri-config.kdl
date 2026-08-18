@@ -85,19 +85,21 @@ environment {
 }
 
 // Autostart applications
-// niri --session handles systemd/D-Bus environment import natively;
-// no dbus-update-activation-environment shim is needed.
+// The session starts via niri-session, so graphical-session.target and
+// xdg-desktop-autostart.target are active (§spec:session-targets).
+// Anything with an /etc/xdg/autostart entry that admits this desktop is
+// started there and is deliberately absent here — nm-applet in particular
+// (NotShowIn=KDE;GNOME) would otherwise run twice.
+// lxpolkit stays: its entry is OnlyShowIn=LXDE, so autostart skips it.
 spawn-at-startup "lxpolkit"
+// No autostart entries ship for these.
 spawn-at-startup "mako"
 spawn-at-startup "waybar"
 // swaybg paints a solid base colour; swww is no longer packaged for any
 // current Fedora. Matches the waybar surface colour (Catppuccin base).
 spawn-at-startup "swaybg" "-m" "solid_color" "-c" "1e1e2e"
-// hypridle runs as a --user service so the §spec:auto-suspend re-arm timer
-// can restart it; the imported session env lets it reach the compositor
-// (§spec:hypridle-user-service).
-spawn-at-startup "systemctl" "--user" "start" "hypridle.service"
-spawn-at-startup "nm-applet"
+// hypridle is WantedBy=graphical-session.target and enabled in the image,
+// so the target starts it (§spec:hypridle-user-service).
 
 // Keybindings
 // Mod = Super on TTY, Alt in nested window

@@ -278,6 +278,7 @@ install -Dm644 /ctx/hypridle.service /usr/lib/systemd/user/hypridle.service
 # user manager independent of the graphical session.
 install -Dm644 /ctx/tilefin-hypridle-rearm.service /usr/lib/systemd/user/tilefin-hypridle-rearm.service
 install -Dm644 /ctx/tilefin-hypridle-rearm.timer /usr/lib/systemd/user/tilefin-hypridle-rearm.timer
+systemctl --global enable hypridle.service        # Pulled in by graphical-session.target (§spec:session-targets)
 systemctl --global enable tilefin-hypridle-rearm.timer
 
 # waybar (status bar)

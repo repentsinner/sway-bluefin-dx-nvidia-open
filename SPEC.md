@@ -210,17 +210,13 @@ reproduce the original failure for whichever token got dropped, and the
 directories are cheap. `~/Pictures` in particular backs the niri
 `screenshot-path` in §spec:niri-compositor.
 
-### Session wrapper runs the update §spec:xdg-user-dirs-session-hook
+### The packaged unit runs the update §spec:xdg-user-dirs-session-hook
 
-`niri-tilefin-session` runs `xdg-user-dirs-update` before
-`exec niri --session`.
-
-Neither packaged hook fires on this image. The autostart entry sets
-`X-systemd-skip=true`, deferring to the unit; the unit is
-`WantedBy=graphical-session-pre.target`, which `niri --session` does not
-activate — the constraint already recorded in
-§spec:hypridle-user-service. The wrapper call is synchronous, so the
-directories exist before greetd hands off to any application.
+The package ships `xdg-user-dirs.service`, wired
+`WantedBy=graphical-session-pre.target`, and an autostart entry that
+sets `X-systemd-skip=true` to defer to it. The session activates that
+target (§spec:session-targets), so the unit runs on its own and the
+image adds no hook of its own.
 
 `xdg-user-dirs-update` merges new defaults into an existing
 `user-dirs.dirs` and leaves current entries alone, so it is safe on
@@ -233,6 +229,70 @@ declaring `xdg-download` gain a real shared directory from this change
 alone. An application declaring no filesystem access, such as Signal,
 needs an explicit per-application override or a file-chooser portal;
 that grant is a user decision, not an image default.
+
+## Session targets §spec:session-targets
+
+*Status: complete*
+
+### Problem
+
+greetd ran `niri-tilefin-session`, which ended in `exec niri --session`.
+That starts the compositor and imports the session environment, but it
+never enters `niri.service`, so `graphical-session-pre.target`,
+`graphical-session.target` and `xdg-desktop-autostart.target` all stayed
+inactive.
+
+Packages wire session-scoped units to those targets. With the targets
+inactive the units never ran, and nothing reported an error:
+
+- `xdg-user-dirs.service` (`WantedBy=graphical-session-pre.target`) —
+  see §spec:xdg-user-dirs.
+- `xdg-desktop-portal.service` — Fedora 44 carries
+  `Requisite=graphical-session.target`, so D-Bus activation fails
+  outright and every sandboxed file chooser falls back to an in-sandbox
+  dialog that can only see the sandbox.
+- Every `/etc/xdg/autostart` entry admitting this desktop.
+
+The image had absorbed the gap one workaround at a time: hypridle
+started from `spawn-at-startup`, `nm-applet` and `lxpolkit` respawned
+from niri config rather than their autostart entries, and an
+`xdg-user-dirs-update` call bolted into the session wrapper. Each
+compensated for the same missing mechanism, and the next package to
+assume a conventional session would have needed a fourth.
+
+### Design
+
+`niri-tilefin-session` ends in `exec niri-session`. That script imports
+the environment, then runs `systemctl --user --wait start niri.service`.
+`niri.service` declares `BindsTo=graphical-session.target` with
+`Wants=graphical-session-pre.target` and `Wants=xdg-desktop-autostart.target`,
+so all three targets activate in order. `RefuseManualStart=yes` on the
+two systemd-owned targets blocks manual starts, not dependency-driven
+ones.
+
+The wrapper keeps its own work — the Bitwarden `SSH_AUTH_SOCK` and the
+§spec:gpu-detection probe — ahead of the `exec`. `niri-session` re-execs
+through a login shell, and exported variables survive that.
+
+On exit, `niri-session` stops the session through `niri-shutdown.target`
+rather than leaving the targets active.
+
+### Autostart entries replace compositor spawns §spec:session-targets-autostart
+
+`systemd-xdg-autostart-generator` translates `OnlyShowIn` and
+`NotShowIn` into an `ExecCondition=`, so each entry decides for itself
+whether it admits `XDG_CURRENT_DESKTOP=niri`. Duplication is the risk
+worth naming: an entry that admits niri and is also listed
+`spawn-at-startup` runs twice.
+
+- `nm-applet` (`NotShowIn=KDE;GNOME`) admits niri, so the
+  `spawn-at-startup` entry is removed.
+- `lxpolkit` (`OnlyShowIn=LXDE`) does not, so it stays in niri config.
+- The gnome-keyring entries (`OnlyShowIn=GNOME;Unity;MATE`) do not run,
+  leaving §spec:credential-storage on D-Bus activation and the Bitwarden
+  agent in sole possession of `SSH_AUTH_SOCK`.
+- `mako`, `waybar` and `swaybg` ship no autostart entry and stay in niri
+  config.
 
 ## Shell configuration §spec:shell-config
 
@@ -1307,15 +1367,12 @@ guard. This replaces the previously commented-out auto-suspend block.
 ### hypridle runs as a user service §spec:hypridle-user-service
 
 hypridle runs as a systemd `--user` service so the re-arm mechanism can
-restart it. niri starts it from `spawn-at-startup` via
-`systemctl --user start hypridle.service` instead of spawning the bare
-binary; the service inherits `WAYLAND_DISPLAY` and `NIRI_SOCKET` from the
-user manager, which `niri --session` populates.
+restart it. The unit is `WantedBy=graphical-session.target` and enabled
+image-wide with `systemctl --global enable`, so the target starts it
+(§spec:session-targets). `PartOf=` ties teardown to the same target.
 
-The service is not bound to `graphical-session.target`. `niri --session`
-imports the session environment into systemd and D-Bus but does not
-activate that target, so a unit wired `WantedBy=graphical-session.target`
-would never start. The compositor spawn is the start trigger instead.
+The service inherits `WAYLAND_DISPLAY` and `NIRI_SOCKET` from the user
+manager, which `niri-session` populates before starting `niri.service`.
 
 ### Weekday re-arm §spec:weekday-rearm
 
