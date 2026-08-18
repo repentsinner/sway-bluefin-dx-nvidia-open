@@ -113,7 +113,10 @@ jobs:
           # misleading "no such container". The Justfile has always passed
           # it; CI did not, which is why local builds worked and this did
           # not the first time it ran.
-          additional-args: --use-librepo=True --rootfs=btrfs
+          # --log-level debug surfaces the podman commands BIB runs inside
+          # its container. It swallows their stderr otherwise, reporting only
+          # the follow-on "no such container" from the mount.
+          additional-args: --use-librepo=True --rootfs=btrfs --log-level debug
 
       - name: Upload disk images and Checksum to Job Artifacts
         if: inputs.upload-to-s3 != true && github.event_name != 'pull_request'
@@ -149,6 +152,12 @@ jobs:
           echo "::endgroup::"
           echo "::group::Kernel denials"
           sudo dmesg | grep -iE 'apparmor|audit|denied' | tail -40 || true
+          echo "::endgroup::"
+          echo "::group::storage backing"
+          df -hT /var/lib/containers/storage 2>/dev/null || true
+          findmnt -no FSTYPE,SOURCE,TARGET /var/lib/containers/storage 2>/dev/null || true
+          stat -f -c 'fstype=%T' /var/lib/containers/storage 2>/dev/null || true
+          uname -r
           echo "::endgroup::"
           echo "::group::podman"
           podman version; sudo podman info --format '{{.Host.Security}}' || true
