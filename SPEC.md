@@ -158,6 +158,64 @@ GPU passthrough support:
 - System-wide Flatpak overrides enable Wayland socket and Electron
   Wayland flags.
 
+## XDG user directories §spec:xdg-user-dirs
+
+*Status: complete*
+
+### Problem
+
+`xdg-user-dirs` reaches most Fedora systems through a desktop
+metapackage. base-nvidia pulls no desktop environment, so the package
+was absent and `~/.config/user-dirs.dirs` never got written.
+
+Flatpak resolves `--filesystem=xdg-download` and its siblings through
+GLib's special-directory lookup, which reads that file. With the file
+missing the token resolves to nothing and Flatpak skips the bind mount
+without an error. Firefox and Bitwarden request `xdg-download`; neither
+received a writable directory. Creating `~/Downloads` by hand does not
+help — the config file, not the directory, is what the lookup consults.
+
+Applications that request no filesystem access, such as Signal, see an
+empty tmpfs at `$HOME`. Files saved there vanish when the application
+exits.
+
+### Design
+
+`xdg-user-dirs` joins `SYSTEM_UTILS`. The package ships
+`/etc/xdg/user-dirs.defaults` naming the eight standard directories —
+Desktop, Downloads, Templates, Public, Documents, Music, Pictures,
+Videos — and `xdg-user-dirs-update`, which creates them and writes
+`~/.config/user-dirs.dirs`.
+
+The image keeps the packaged defaults unedited. A trimmed set would
+reproduce the original failure for whichever token got dropped, and the
+directories are cheap. `~/Pictures` in particular backs the niri
+`screenshot-path` in §spec:niri-compositor.
+
+### Session wrapper runs the update §spec:xdg-user-dirs-session-hook
+
+`niri-tilefin-session` runs `xdg-user-dirs-update` before
+`exec niri --session`.
+
+Neither packaged hook fires on this image. The autostart entry sets
+`X-systemd-skip=true`, deferring to the unit; the unit is
+`WantedBy=graphical-session-pre.target`, which `niri --session` does not
+activate — the constraint already recorded in
+§spec:hypridle-user-service. The wrapper call is synchronous, so the
+directories exist before greetd hands off to any application.
+
+`xdg-user-dirs-update` merges new defaults into an existing
+`user-dirs.dirs` and leaves current entries alone, so it is safe on
+every login.
+
+### Flatpak grants stay per-application §spec:xdg-user-dirs-no-blanket-grant
+
+The image adds no blanket `--filesystem=home` override. Applications
+declaring `xdg-download` gain a real shared directory from this change
+alone. An application declaring no filesystem access, such as Signal,
+needs an explicit per-application override or a file-chooser portal;
+that grant is a user decision, not an image default.
+
 ## Shell configuration §spec:shell-config
 
 *Status: complete*

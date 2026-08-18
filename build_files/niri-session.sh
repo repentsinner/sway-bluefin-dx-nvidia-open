@@ -2,6 +2,13 @@
 # Niri session wrapper
 # Sets up environment before starting niri
 
+# XDG user directories (§spec:xdg-user-dirs)
+# Run here rather than via the packaged xdg-user-dirs.service: that unit is
+# WantedBy=graphical-session-pre.target, and niri --session does not activate
+# it (same constraint as hypridle, §spec:hypridle-user-service). Synchronous,
+# so ~/Downloads and friends exist before any Flatpak starts.
+xdg-user-dirs-update
+
 # Bitwarden SSH agent socket
 export SSH_AUTH_SOCK="$HOME/.var/app/com.bitwarden.desktop/data/.bitwarden-ssh-agent.sock"
 
