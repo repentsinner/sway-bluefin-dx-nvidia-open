@@ -5,6 +5,37 @@ setup-user image="":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # Static hostname. The installer never asks: Anaconda keeps the hostname
+    # field inside the Network spoke, which the ISO kickstart already
+    # satisfies, so the spoke is never flagged and the field is never seen.
+    # Without a static hostname the greeter falls back to the kernel default
+    # and announces the machine as "fedora", and the only name it answers to
+    # comes from a DHCP lease rather than from the machine itself.
+    CURRENT_STATIC=$(hostnamectl --static 2>/dev/null || true)
+    CURRENT_TRANSIENT=$(hostnamectl --transient 2>/dev/null | cut -d. -f1 || true)
+    HOSTNAME_NEW=$(gum input --header="Static hostname" \
+        --value="${CURRENT_STATIC:-${CURRENT_TRANSIENT:-tilefin}}")
+    if [ -n "$HOSTNAME_NEW" ] && [ "$HOSTNAME_NEW" != "$CURRENT_STATIC" ]; then
+        echo "==> Setting static hostname to ${HOSTNAME_NEW} (needs sudo)..."
+        sudo hostnamectl set-hostname "$HOSTNAME_NEW"
+    fi
+
+    # Login shell. Anaconda creates the account with /bin/bash, but the image
+    # ships fish and carries fish-specific integration (tool-aliases.fish,
+    # local-path.fish), so the choice belongs here rather than being
+    # rediscovered on every machine. /bin and /usr/bin are the same directory
+    # on Fedora; normalise so the current shell matches an offered option.
+    CURRENT_SHELL=$(getent passwd "$USER" | cut -d: -f7)
+    CURRENT_SHELL_NORM=${CURRENT_SHELL/#\/bin\//\/usr\/bin\/}
+    SHELL_NEW=$(grep -E '^/usr/bin/(bash|fish|zsh)$' /etc/shells | sort -u \
+        | gum choose --header="Login shell" --selected="$CURRENT_SHELL_NORM")
+    if [ -n "$SHELL_NEW" ] && [ "$SHELL_NEW" != "$CURRENT_SHELL_NORM" ]; then
+        echo "==> Setting login shell to ${SHELL_NEW} (needs sudo)..."
+        sudo usermod -s "$SHELL_NEW" "$USER"
+        echo "    Takes effect at next login."
+    fi
+
+    echo ""
     echo "Select components to install (space to toggle, enter to confirm):"
     echo ""
 
