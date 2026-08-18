@@ -93,6 +93,18 @@ setup-user image="":
         fi
     fi
 
+    # Wayland overrides for the user Flatpak installation (§spec:flatpak-override-scope).
+    # build.sh writes the same overrides to /var/lib/flatpak/overrides/global,
+    # but Flatpak reads overrides from the installation an app belongs to, and
+    # everything here installs --user. Unconditional: the overrides apply to
+    # apps installed later too. flatpak override merges into an existing
+    # global file, so re-running setup-user preserves per-user grants.
+    echo ""
+    echo "==> Applying Wayland Flatpak overrides (user installation)..."
+    flatpak override --user --socket=wayland
+    flatpak override --user --env=ELECTRON_ENABLE_WAYLAND=1
+    flatpak override --user --env=ELECTRON_OZONE_PLATFORM_HINT=wayland
+
     # Assemble userbox container
     if [ "$INSTALL_USERBOX" = "Yes" ]; then
         echo ""

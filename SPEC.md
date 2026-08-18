@@ -155,8 +155,26 @@ GPU passthrough support:
 
 - Electron apps forced to native Wayland via
   `/etc/environment.d/electron-wayland.conf`.
-- System-wide Flatpak overrides enable Wayland socket and Electron
-  Wayland flags.
+- Flatpak overrides enable the Wayland socket and the Electron Wayland
+  flags in both Flatpak installations (§spec:flatpak-override-scope).
+
+### Flatpak overrides apply per installation §spec:flatpak-override-scope
+
+Flatpak reads overrides from the installation an application belongs to.
+`/var/lib/flatpak/overrides/global` covers the system installation and
+`~/.local/share/flatpak/overrides/global` covers the per-user one. The
+system file does not reach a `--user` install.
+
+`build.sh` writes the system copy. §spec:ujust-setup-user installs
+Flatpaks with `--user`, so it writes the same overrides to the user
+installation; without them Electron applications fall back to XWayland
+and lose fractional scaling.
+
+`setup-user` applies the overrides through `flatpak override --user`
+rather than writing the file. The command merges into an existing global
+file, so re-running the recipe preserves per-user grants added by hand.
+The calls sit outside the app-selection branch — an override applies to
+applications installed later, not only to the ones chosen in that run.
 
 ## XDG user directories §spec:xdg-user-dirs
 
