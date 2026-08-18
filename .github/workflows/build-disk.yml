@@ -79,6 +79,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
 
+      # bootc-image-builder runs podman inside its own container to mount the
+      # input image. The action passes --security-opt label=type:unconfined_t,
+      # which is SELinux-specific and a no-op on Ubuntu runners, where AppArmor
+      # is the LSM. Podman then applies its default AppArmor profile to the
+      # builder, and the nested podman inside cannot create a container —
+      # surfacing as "no such container" straight after creating one.
+      #
+      # The identical command succeeds on a Fedora/SELinux host, so the
+      # difference is the LSM rather than the invocation. Default the container
+      # profile to unconfined instead of tearing down AppArmor system-wide.
+      - name: Run containers unconfined by AppArmor
+        run: |
+          sudo mkdir -p /etc/containers
+          printf '[containers]\napparmor_profile = "unconfined"\n' \
+            | sudo tee /etc/containers/containers.conf
+
       - name: Build disk images
         id: build
         uses: osbuild/bootc-image-builder-action@main
@@ -124,3 +140,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rclone
           rclone copy $SOURCE_DIR S3:${{ secrets.S3_BUCKET_NAME }}
+
+      - name: Diagnose build failure
+        if: failure()
+        run: |
+          echo "::group::AppArmor state"
+          sudo aa-status --json 2>/dev/null | head -c 2000 || sudo aa-status | head -20 || true
+          echo "::endgroup::"
+          echo "::group::Kernel denials"
+          sudo dmesg | grep -iE 'apparmor|audit|denied' | tail -40 || true
+          echo "::endgroup::"
+          echo "::group::podman"
+          podman version; sudo podman info --format '{{.Host.Security}}' || true
+          echo "::endgroup::"
