@@ -20,6 +20,21 @@ setup-user image="":
         sudo hostnamectl set-hostname "$HOSTNAME_NEW"
     fi
 
+    # Login shell. Anaconda creates the account with /bin/bash, but the image
+    # ships fish and carries fish-specific integration (tool-aliases.fish,
+    # local-path.fish), so the choice belongs here rather than being
+    # rediscovered on every machine. /bin and /usr/bin are the same directory
+    # on Fedora; normalise so the current shell matches an offered option.
+    CURRENT_SHELL=$(getent passwd "$USER" | cut -d: -f7)
+    CURRENT_SHELL_NORM=${CURRENT_SHELL/#\/bin\//\/usr\/bin\/}
+    SHELL_NEW=$(grep -E '^/usr/bin/(bash|fish|zsh)$' /etc/shells | sort -u \
+        | gum choose --header="Login shell" --selected="$CURRENT_SHELL_NORM")
+    if [ -n "$SHELL_NEW" ] && [ "$SHELL_NEW" != "$CURRENT_SHELL_NORM" ]; then
+        echo "==> Setting login shell to ${SHELL_NEW} (needs sudo)..."
+        sudo usermod -s "$SHELL_NEW" "$USER"
+        echo "    Takes effect at next login."
+    fi
+
     echo ""
     echo "Select components to install (space to toggle, enter to confirm):"
     echo ""
