@@ -860,6 +860,56 @@ The unattended build was declared sound on artifact properties alone —
 bootable, correct size, image embedded, checksum implanted — none of
 which say what it does when it boots.
 
+## Local test VM §spec:vm-test-harness
+
+*Status: complete*
+
+### Problem
+
+`just run-vm-*` handed the built disk to the `qemux/qemu` container as
+`/boot.qcow2`. When that container could not parse the image it did not
+fail — it downloaded Alpine Linux, created a blank disk and booted that
+instead, over a browser console on port 8006. A broken build therefore
+presented as a working VM of an unrelated operating system.
+
+Two further faults compounded it. §spec:install-media leaves account
+creation to Anaconda, so a disk image built from `disk_config/disk.toml`
+had no account and greetd rejected every login. And niri skips software
+EGL renderers, so a virtio-gpu without 3D produced a running compositor
+that drew nothing.
+
+### Design
+
+`_run-vm` calls `virt-install` against `qemu:///session`. A rootless
+session domain reads the image straight from the work tree, so no
+relabelling or privileged podman step is needed.
+
+The recipe refuses to start rather than improvising:
+
+- An absent or empty artifact is an error naming the build recipe.
+- `qemu-img info` gates disk types; an unreadable image is an error.
+- An existing domain is an error pointing at `just clean-vm`.
+
+`--tpm none` is explicit. `virt-install` otherwise attaches an emulated
+TPM, and `swtpm` cannot execute under a rootless session. Nothing in the
+image needs one — §spec:virtualization carries `swtpm` for Windows
+guests.
+
+`--noautoconsole` avoids a hard dependency on `virt-viewer`, which the
+image does not ship; the recipe opens the console with `virt-manager`
+instead and prints the command when that is absent too.
+
+### Rendering needs 3D §spec:vm-test-harness-gl
+
+The domain requests `virtio,accel3d=on` with `spice,gl.enable=yes`.
+Without 3D niri logs `software EGL renderers are skipped` and presents a
+blank display, which reads as a hung session rather than a missing
+feature. `VM_GL=off` selects plain virtio for hosts without virgl and
+warns that the display stays blank. A failed `virt-install` prints the
+fallback invocation.
+
+`VM_NAME`, `VM_CONNECT`, `VM_RAM` and `VM_CPUS` override the rest.
+
 ## Video capture kernel module §spec:decklink-capture
 
 *Status: complete*
