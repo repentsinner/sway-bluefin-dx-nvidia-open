@@ -1,3 +1,16 @@
+# Local test artifact only. `build-qcow2` and `build-raw` feed `just run-vm-*`;
+# they are not install media. The installer is the ISO (disk_config/iso.toml),
+# which omits account creation so Anaconda prompts for it — that file is
+# unaffected by anything here.
+#
+# Without a user block bootc-image-builder creates no account and locks root,
+# so the VM boots to greetd with no credentials that work. The account below
+# exists to make the image loggable; it never reaches installed hardware.
+[[customizations.user]]
+name = "test"
+password = "test"
+groups = ["wheel"]
+
 [[customizations.filesystem]]
 mountpoint = "/"
 minsize = "20 GiB"
