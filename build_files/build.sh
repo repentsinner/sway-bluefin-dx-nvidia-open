@@ -84,6 +84,7 @@ SYSTEM_UTILS=(
     gum                       # TUI menus for ujust recipes
     gnome-keyring             # Secret Service (org.freedesktop.secrets) for gh/secret-tool (§spec:credential-storage)
     gnome-keyring-pam         # Activates the keyring auto-unlock lines already in /etc/pam.d/greetd
+    xdg-user-dirs             # Creates ~/Downloads etc. so Flatpak xdg-* grants resolve (§spec:xdg-user-dirs)
 )
 
 SYSTEM_THEMING=(
