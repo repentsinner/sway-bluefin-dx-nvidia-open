@@ -85,6 +85,7 @@ SYSTEM_UTILS=(
     gnome-keyring             # Secret Service (org.freedesktop.secrets) for gh/secret-tool (§spec:credential-storage)
     gnome-keyring-pam         # Activates the keyring auto-unlock lines already in /etc/pam.d/greetd
     xdg-user-dirs             # Creates ~/Downloads etc. so Flatpak xdg-* grants resolve (§spec:xdg-user-dirs)
+    dbus-tools                # dbus-update-activation-environment, needed by the session wrapper (§spec:session-targets)
 )
 
 SYSTEM_THEMING=(
@@ -278,6 +279,7 @@ install -Dm644 /ctx/hypridle.service /usr/lib/systemd/user/hypridle.service
 # user manager independent of the graphical session.
 install -Dm644 /ctx/tilefin-hypridle-rearm.service /usr/lib/systemd/user/tilefin-hypridle-rearm.service
 install -Dm644 /ctx/tilefin-hypridle-rearm.timer /usr/lib/systemd/user/tilefin-hypridle-rearm.timer
+systemctl --global enable hypridle.service        # Pulled in by graphical-session.target (§spec:session-targets)
 systemctl --global enable tilefin-hypridle-rearm.timer
 
 # waybar (status bar)
