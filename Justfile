@@ -2,6 +2,16 @@ export image_name := env("IMAGE_NAME", "tilefin-nvidia-open") # output image nam
 export default_tag := env("DEFAULT_TAG", "latest")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
 
+# Local test VM (§spec:vm-test-harness). qemu:///session keeps the domain
+# rootless so it can read images from the work tree without relabelling.
+export vm_name := env("VM_NAME", "tilefin-test")
+export vm_connect := env("VM_CONNECT", "qemu:///session")
+# niri has no software-EGL fallback, so a virtio-gpu without 3D renders
+# nothing. Set VM_GL=off if the host lacks virgl.
+export vm_gl := env("VM_GL", "on")
+export vm_ram := env("VM_RAM", "8192")
+export vm_cpus := env("VM_CPUS", "4")
+
 alias build-vm := build-qcow2
 alias rebuild-vm := rebuild-qcow2
 alias run-vm := run-vm-qcow2
@@ -230,44 +240,103 @@ rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_reb
 # Run a virtual machine with the specified image type and configuration
 _run-vm $target_image $tag $type $config:
     #!/usr/bin/bash
-    set -eoux pipefail
+    set -eou pipefail
 
-    # Determine the image file based on the type
+    # Locate the artifact the matching build recipe produces.
     image_file="output/${type}/disk.${type}"
     if [[ $type == *iso ]]; then
         image_file="output/bootiso/install.iso"
     fi
-
-    # Build the image if it does not exist
     if [[ ! -f "${image_file}" ]]; then
         just "build-${type}" "$target_image" "$tag"
     fi
 
-    # Determine an available port to use
-    port=8006
-    while grep -q :${port} <<< $(ss -tunalp); do
-        port=$(( port + 1 ))
-    done
-    echo "Using Port: ${port}"
-    echo "Connect to http://localhost:${port}"
+    # Refuse an absent or unreadable image rather than letting the hypervisor
+    # improvise. The qemux/qemu recipe this replaced fell back to downloading
+    # and booting Alpine Linux when it could not parse the disk, so a broken
+    # build presented as a working VM of an entirely different OS.
+    if [[ ! -s "${image_file}" ]]; then
+        echo "ERROR: ${image_file} is missing or empty. Run: just build-${type}" >&2
+        exit 1
+    fi
+    # qemu-img guesses "raw" for anything it cannot parse, so an unpinned
+    # `qemu-img info` accepts a text file. Pin the format to make it a check.
+    if [[ $type == qcow2 ]] && command -v qemu-img >/dev/null; then
+        if ! qemu-img info -f qcow2 "${image_file}" >/dev/null 2>&1; then
+            echo "ERROR: ${image_file} is not a valid qcow2 image." >&2
+            exit 1
+        fi
+    fi
+    # A raw disk has no header to validate, so look for the GPT signature that
+    # bootc-image-builder writes at LBA 1.
+    if [[ $type == raw ]]; then
+        if ! printf 'EFI PART' | cmp -s - <(dd if="${image_file}" bs=1 skip=512 count=8 status=none); then
+            echo "ERROR: ${image_file} has no GPT header; it is not a bootable disk." >&2
+            exit 1
+        fi
+    fi
 
-    # Set up the arguments for running the VM
-    run_args=()
-    run_args+=(--rm --privileged)
-    run_args+=(--pull=newer)
-    run_args+=(--publish "127.0.0.1:${port}:8006")
-    run_args+=(--env "CPU_CORES=4")
-    run_args+=(--env "RAM_SIZE=8G")
-    run_args+=(--env "DISK_SIZE=64G")
-    run_args+=(--env "TPM=Y")
-    run_args+=(--env "GPU=Y")
-    run_args+=(--device=/dev/kvm)
-    run_args+=(--volume "${PWD}/${image_file}":"/boot.${type}")
-    run_args+=(docker.io/qemux/qemu)
+    if virsh --connect "$vm_connect" dominfo "$vm_name" >/dev/null 2>&1; then
+        echo "ERROR: domain '$vm_name' already exists. Remove it with: just clean-vm" >&2
+        exit 1
+    fi
 
-    # Run the VM and open the browser to connect
-    (sleep 30 && xdg-open http://localhost:"$port") &
-    podman run "${run_args[@]}"
+    args=(
+        --connect "$vm_connect"
+        --name "$vm_name"
+        --memory "$vm_ram"
+        --vcpus "$vm_cpus"
+        --boot uefi
+        --osinfo "detect=on,name=fedora-unknown"
+        --network user
+        # swtpm cannot execute under a rootless session and nothing in the
+        # image needs a TPM; virt-install would otherwise attach one and fail.
+        --tpm none
+        # virt-viewer is not in the image, so let virt-manager open the console.
+        --noautoconsole
+    )
+
+    if [[ $type == *iso ]]; then
+        args+=(--cdrom "${PWD}/${image_file}")
+        args+=(--disk "size=64,format=qcow2")
+    else
+        args+=(--import)
+        args+=(--disk "path=${PWD}/${image_file},format=${type},bus=virtio")
+    fi
+
+    # niri skips software EGL renderers, so without 3D the compositor starts
+    # but draws nothing. Set VM_GL=off when the host cannot provide virgl.
+    if [[ "$vm_gl" == "on" ]]; then
+        args+=(--video "virtio,accel3d=on")
+        args+=(--graphics "spice,gl.enable=yes,listen=none")
+    else
+        args+=(--video virtio --graphics spice)
+        echo "NOTE: VM_GL=off — niri will start but render nothing." >&2
+    fi
+
+    if ! virt-install "${args[@]}"; then
+        echo "" >&2
+        echo "virt-install failed. If it objected to 3D acceleration, retry with:" >&2
+        echo "  VM_GL=off just run-vm-${type}" >&2
+        exit 1
+    fi
+
+    echo "Domain '$vm_name' started on $vm_connect."
+    if command -v virt-manager >/dev/null; then
+        virt-manager --connect "$vm_connect" --show-domain-console "$vm_name" &
+    else
+        echo "Open the console with:" >&2
+        echo "  virt-manager --connect $vm_connect --show-domain-console $vm_name" >&2
+    fi
+
+# Destroy and undefine the local test VM
+[group('Run Virtal Machine')]
+clean-vm:
+    #!/usr/bin/bash
+    set -eou pipefail
+    virsh --connect "$vm_connect" destroy "$vm_name" >/dev/null 2>&1 || true
+    virsh --connect "$vm_connect" undefine --nvram "$vm_name" >/dev/null 2>&1 || true
+    echo "Removed domain '$vm_name' from $vm_connect (if it existed)."
 
 # Run a virtual machine from a QCOW2 image
 [group('Run Virtal Machine')]
