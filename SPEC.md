@@ -115,7 +115,7 @@ tmpfiles.d only sets ownership, doesn't create the directory).
 - **Utilities**: rofimoji, network-manager-applet, wdisplays.
 - **Shell**: fish.
 - **Flatpaks** (installed by `ujust setup-user`, not baked into image):
-  Bitwarden, Firefox, Slack.
+  Bitwarden, Firefox, Slack, Trayscale (§spec:tailscale).
 
 ## Theming §spec:theming
 
@@ -134,6 +134,11 @@ Enabled at build time:
 - `libvirtd.socket` — VM management (socket-activated).
 - `greetd.service` — display manager.
 - `rpm-ostreed-automatic.timer` — auto-stage image upgrades.
+- `tailscaled.service` — mesh VPN daemon (§spec:tailscale).
+
+`linuxptp` ships `ptp4l.service` and `phc2sys.service`. Neither is
+enabled: `ptp4l` needs a per-machine interface in `/etc/ptp4l.conf`
+(§spec:ptp).
 
 ## Virtualization §spec:virtualization
 
@@ -502,6 +507,58 @@ adds the repo and installs the `code` package directly.
 Rationale: the previous base (Bluefin-DX) provided VS Code; base-nvidia
 does not. VS Code is a host application that attaches to containers — it
 does not belong in the userbox.
+
+## Tailscale mesh VPN §spec:tailscale
+
+*Status: in progress*
+
+### Problem
+
+Bluefin-DX shipped the `tailscale` RPM and enabled `tailscaled.service`;
+`base-nvidia` ships neither. The rebase (§spec:base-image-rebase) dropped
+both, along with the Trayscale Flatpak. The Flatpak survives on machines
+that predate the rebase — Flatpaks live in `/var`, which image updates
+never touch — leaving a GUI with no daemon behind it.
+
+Client-side layering (`rpm-ostree install tailscale`) is not the answer.
+`rpm-ostreed-automatic.timer` re-resolves every layered package against
+its remote repo on each staged upgrade, so an unreachable
+`pkgs.tailscale.com` turns into a failed system update. Baking the
+package into the image moves that failure into CI.
+
+### Design
+
+The build adds Tailscale's yum repo and installs `tailscale`, following
+the pattern already used for VS Code (§spec:vscode). The repo `baseurl`
+is keyed on `$basearch` rather than `$releasever`, so it does not pin the
+image to a Fedora release.
+
+`tailscaled` runs on the host, not in a container: it opens
+`/dev/net/tun`, creates `tailscale0`, and rewrites routes and DNS in the
+host network namespace.
+
+Two steps stay per-machine and are deliberately not in the image:
+
+- `tailscale up` — enrolls the node in a tailnet, which is an account
+  action, not an image property.
+- `tailscale set --operator=<user>` — chowns
+  `/run/tailscale/tailscaled.sock` to a login user. Without it the
+  socket is root-only, and Trayscale connects to nothing.
+
+Trayscale is offered by `ujust setup-user` rather than baked in, matching
+every other Flatpak (§spec:desktop-apps). No Flatpak override is needed:
+upstream's manifest already grants `filesystems=/run/tailscale:ro`. The
+override the pre-rebase build wrote is obsolete.
+
+### tailscale in image §spec:tailscale-installed
+
+The image contains `/usr/bin/tailscale`, `/usr/sbin/tailscaled`, and
+`/usr/lib/systemd/system/tailscaled.service`.
+
+### tailscaled enabled at build §spec:tailscaled-enabled
+
+`tailscaled.service` shall be enabled in the image, so a node reaches the
+login-ready state on first boot without a manual `systemctl enable`.
 
 ## Dynamic GPU detection for hybrid Intel+Nvidia systems §spec:gpu-detection
 
@@ -1086,6 +1143,44 @@ base). That project installs `doca-all`, `doca-roce`, `rivermax`, and
 
 Requirements to be specified after resolving DOCA-OFED packaging on
 Fedora bootc.
+
+## PTP time sync §spec:ptp
+
+*Status: in progress*
+
+### Problem
+
+ST2110 senders and receivers derive their media clock from a PTP
+grandmaster (SMPTE 2059-2). Without `ptp4l` disciplining the NIC's
+hardware clock and `phc2sys` carrying that time to the system clock, an
+ST2110 stream has no common timebase and receivers cannot align
+essences. This gates §spec:rivermax, and is equally needed for
+packet-capture timestamping and for talking to third-party ST2110
+hardware before any Rivermax work starts.
+
+`linuxptp` was reaching machines as an `rpm-ostree` layered package,
+which carries the same upgrade fragility described in §spec:tailscale.
+
+### Design
+
+`linuxptp` installs in the `SYSTEM_UTILS` package group, providing
+`ptp4l`, `phc2sys`, `pmc`, and `ts2phc`.
+
+Neither `ptp4l.service` nor `phc2sys.service` is enabled. `ptp4l` runs
+`-f /etc/ptp4l.conf`, whose shipped default carries a single `[eth0]`
+section — an interface no machine here has, and one that differs per
+host and per media fabric anyway. Enabling a unit that fails on every
+boot is worse than leaving the choice explicit, so configuration stays
+a per-machine act in `/etc`.
+
+The packaged defaults suit an ST2110 client once the interface is
+corrected: `clientOnly 1` and `time_stamping hardware`, disciplining the
+NIC PHC from an external grandmaster rather than electing one.
+
+### linuxptp in image §spec:linuxptp-installed
+
+The image contains `/usr/sbin/ptp4l` and `/usr/sbin/phc2sys`, with
+`ptp4l.service` and `phc2sys.service` present but disabled.
 
 ## NVIDIA DRM modesetting §spec:nvidia-drm-modeset
 
