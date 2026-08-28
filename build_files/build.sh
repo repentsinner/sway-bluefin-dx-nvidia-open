@@ -86,6 +86,7 @@ SYSTEM_UTILS=(
     gnome-keyring-pam         # Activates the keyring auto-unlock lines already in /etc/pam.d/greetd
     xdg-user-dirs             # Creates ~/Downloads etc. so Flatpak xdg-* grants resolve (§spec:xdg-user-dirs)
     dbus-tools                # dbus-update-activation-environment, needed by the session wrapper (§spec:session-targets)
+    linuxptp                  # ptp4l/phc2sys — PTP clock sync for ST2110 (§spec:ptp)
 )
 
 SYSTEM_THEMING=(
@@ -197,6 +198,19 @@ echo "Installing VS Code..."
 rpm --import https://packages.microsoft.com/keys/microsoft.asc
 dnf5 config-manager addrepo --from-repofile=https://packages.microsoft.com/yumrepos/vscode/config.repo
 dnf5 install -y code
+
+# Tailscale: install from Tailscale's yum repo (§spec:tailscale). Neither
+# Fedora nor base-nvidia packages it. The repo baseurl is keyed on $basearch,
+# not $releasever, so it survives Fedora release bumps.
+echo "Installing Tailscale..."
+rpm --import https://pkgs.tailscale.com/stable/fedora/repo.gpg
+dnf5 config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+dnf5 install -y tailscale
+
+# tailscaled owns the tailscale0 interface, routes and DNS, so it belongs to
+# the host rather than a container. Enabled here, not in the package-service
+# block above, because the package is installed in this section.
+systemctl enable tailscaled.service
 
 # niri-desaturate (fork with desaturate window rule support)
 # Replaces the COPR niri package until upstream merges the PR

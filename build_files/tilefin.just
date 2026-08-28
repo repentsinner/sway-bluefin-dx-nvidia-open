@@ -52,7 +52,8 @@ setup-user image="":
         "Slack" \
         "Discord" \
         "Signal" \
-        "Proton VPN")
+        "Proton VPN" \
+        "Trayscale")
 
     # Userbox
     INSTALL_USERBOX=$(gum choose --selected="Yes" "Yes" "No" \
@@ -88,6 +89,7 @@ setup-user image="":
         echo "$FLATPAK_APPS" | grep -q "Discord"    && FLATPAK_IDS+=("com.discordapp.Discord")
         echo "$FLATPAK_APPS" | grep -q "Signal"     && FLATPAK_IDS+=("org.signal.Signal")
         echo "$FLATPAK_APPS" | grep -q "Proton VPN" && FLATPAK_IDS+=("com.protonvpn.www")
+        echo "$FLATPAK_APPS" | grep -q "Trayscale"  && FLATPAK_IDS+=("dev.deedles.Trayscale")
         if [ ${#FLATPAK_IDS[@]} -gt 0 ]; then
             flatpak install --user --noninteractive flathub "${FLATPAK_IDS[@]}"
         fi
