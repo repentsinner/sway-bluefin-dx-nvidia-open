@@ -170,11 +170,12 @@ bmd-install tarball:
     done
     sudoif ln -sf DesktopVideoUpdateTool {{ bmd_bin_dir }}/BlackmagicFirmwareUpdater
 
-    # Bundled C++ runtime. Shipped up to 16.0.1a2; dropped in 16.1a3, which links
-    # against the system libstdc++ instead. Copy only what the release ships, and
-    # delete stragglers from an earlier version: these sit on libDeckLinkAPI.so's
-    # RUNPATH, where a stale libgcc_s.so.1 would shadow the system one and pair a
-    # new binary with an old ABI.
+    # Bundled C++ runtime. Shipped up to 16.0.1a2; dropped in 16.1a3, whose
+    # binaries link libstdc++.so.6 and libgcc_s.so.1 and resolve both through
+    # ld.so. Copy only what the release ships, and delete stragglers from an
+    # earlier version: DesktopVideoUpdateTool has RUNPATH $ORIGIN, so anything
+    # left in this directory is searched before the system paths and a stale
+    # libgcc_s.so.1 would pair a new binary with an old ABI.
     BUNDLED_LIBS=()
     for lib in libc++.so.1 libc++abi.so.1 libgcc_s.so.1; do
         if [[ -e "${DV_SRC}/${lib}" ]]; then
@@ -191,10 +192,13 @@ bmd-install tarball:
     fi
     sudoif restorecon -Rv {{ bmd_bin_dir }}
 
-    # SDK RUNPATH symlinks: libDeckLinkAPI.so has RUNPATH $ORIGIN/blackmagic/DesktopVideo
-    # so it looks for the bundled libs relative to itself. Symlink to the bin dir
-    # copies. Clear the directory first — a release that bundles nothing must leave
-    # no symlinks behind, or they would resolve to the deleted files above.
+    # SDK RUNPATH symlinks. Releases that bundle the C++ runtime give
+    # libDeckLinkAPI.so a RUNPATH of $ORIGIN/blackmagic/DesktopVideo, so it
+    # finds those libs relative to itself; symlink them to the bin dir copies.
+    # 16.1a3 carries no RUNPATH at all and needs none of this, so the loop is
+    # a no-op there and the step is kept only for the older releases. Clear the
+    # directory first either way — a release that bundles nothing must leave no
+    # symlinks behind, or they would resolve to the deleted files above.
     echo "  Creating SDK RUNPATH symlinks..."
     SDK_RUNPATH_DIR="{{ bmd_lib_dir }}/blackmagic/DesktopVideo"
     sudoif mkdir -p "${SDK_RUNPATH_DIR}"
