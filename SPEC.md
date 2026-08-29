@@ -1200,6 +1200,10 @@ causing:
 - Hyprlock renders a flat magenta/red field instead of a blurred
   screenshot after extended display sleep.
 
+The DSC attribution is a hypothesis carried from the original report
+and remains unconfirmed. The one reproduction captured since traced to
+a display standby setting instead (§spec:display-deep-sleep).
+
 ### Design
 
 A `bootc kargs.d` file (`30-nvidia-drm.toml`) adds
@@ -1214,6 +1218,63 @@ configuration is needed.
 
 `/usr/lib/bootc/kargs.d/30-nvidia-drm.toml` sets
 `nvidia-drm.modeset=1`. The arg appears in `/proc/cmdline` after reboot.
+
+### Display deep sleep and wake disconnects §spec:display-deep-sleep
+
+Bench captures on molecule, 2026-04-10 to 2026-04-15, connector
+`card1-DP-4`, kernel 6.19.10 and 6.19.11-100.fc42, driver 595.58.03,
+sampling connector `status` and `dpms` at 2 Hz across idle display-off
+and wake. §spec:drm-modeset-karg was already deployed, and `dmesg`
+reports `fbcon: nvidia-drmdrmfb (fb0) is primary device`, which the
+driver reaches only under modesetting — so these record behavior with
+DRM modesetting active.
+
+An LG 40WP95C at 5120x2160 lost applications on wake:
+
+```text
+14:08:20.032 connected On
+14:08:47.351 connected Off      idle display-off
+14:17:01.170 connected On       wake
+14:17:02.181 disconnected Off   link drops
+14:17:04.717 connected Off
+14:17:05.223 connected On
+```
+
+Both Bitwarden scopes ended at 14:17:02.31 and the Chromium scope at
+14:17:04.93, inside that disconnect. A check twelve seconds later found
+VS Code and Bitwarden gone.
+
+A BenQ PD3200U at 3840x2160 on the same connector did not reproduce it:
+86 clean On/Off transitions over 19 hours, no `disconnected` sample and
+no application loss. The distinguishing variable is the display, not
+the DPMS cycle.
+
+The cause is a display setting, not the GPU. Setting
+`[Settings] > [General] > [Deep Sleep Mode]` to `[Off]` on the LG ends
+the session loss. With it `[On]`, the panel powers down its electronics
+in standby and the host sees a hotplug disconnect rather than a display
+in standby; the GPU contexts behind the Electron apps do not survive
+the reconnect.
+
+LG documents the setting and its power purpose alone. The owner's
+manual for this panel gives it as "When [Deep Sleep Mode] is [On],
+power consumption is minimized while the monitor is in standby mode",
+states no default, and says nothing about link teardown. The disconnect
+behavior is established here by capture and corroborated by third-party
+reports of the same setting presenting as an unplug to macOS hosts.
+
+Turning it off is an operator step at display bring-up, not image
+configuration: the setting lives in the monitor's own non-volatile
+storage and no host-side change reaches it.
+
+### Open questions
+
+- Does §spec:drm-modeset-karg resolve anything on its own? It was
+  adopted against a symptom that has since traced to a display
+  setting, and no capture isolates the karg.
+- The capture baseline records kernel and driver version but not
+  `/proc/cmdline`, so karg state above is inferred from `dmesg` rather
+  than recorded. A repeat should capture it directly.
 
 ## Manual system suspend §spec:manual-suspend
 

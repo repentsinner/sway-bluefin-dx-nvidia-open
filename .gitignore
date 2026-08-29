@@ -4,3 +4,7 @@ output
 _build-*/**
 .envrc
 .direnv/
+
+# Bench captures and runtime logs (see §spec:display-deep-sleep)
+s21-captures/
+cufile.log
