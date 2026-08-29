@@ -162,24 +162,46 @@ bmd-install tarball:
 
     # Userspace binaries + private runtime libs (co-located so RUNPATH $ORIGIN works)
     echo "  Installing userspace binaries and runtime libraries..."
+    DV_SRC="${RPM_ROOT}/usr/lib64/blackmagic/DesktopVideo"
     sudoif mkdir -p {{ bmd_bin_dir }}
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/DesktopVideoHelper {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/DesktopVideoNotifier {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/DesktopVideoUpdateTool {{ bmd_bin_dir }}/
+    for f in DesktopVideoHelper DesktopVideoNotifier DesktopVideoUpdateTool \
+             libDVUpdate.so libusb-1.0.so.0; do
+        sudoif cp "${DV_SRC}/${f}" {{ bmd_bin_dir }}/
+    done
     sudoif ln -sf DesktopVideoUpdateTool {{ bmd_bin_dir }}/BlackmagicFirmwareUpdater
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libc++.so.1 {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libc++abi.so.1 {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libgcc_s.so.1 {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libDVUpdate.so {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libusb-1.0.so.0 {{ bmd_bin_dir }}/
+
+    # Bundled C++ runtime. Shipped up to 16.0.1a2; dropped in 16.1a3, which links
+    # against the system libstdc++ instead. Copy only what the release ships, and
+    # delete stragglers from an earlier version: these sit on libDeckLinkAPI.so's
+    # RUNPATH, where a stale libgcc_s.so.1 would shadow the system one and pair a
+    # new binary with an old ABI.
+    BUNDLED_LIBS=()
+    for lib in libc++.so.1 libc++abi.so.1 libgcc_s.so.1; do
+        if [[ -e "${DV_SRC}/${lib}" ]]; then
+            sudoif cp "${DV_SRC}/${lib}" {{ bmd_bin_dir }}/
+            BUNDLED_LIBS+=("${lib}")
+        else
+            sudoif rm -f {{ bmd_bin_dir }}/"${lib}"
+        fi
+    done
+    if (( ${#BUNDLED_LIBS[@]} > 0 )); then
+        echo "    Bundled C++ runtime: ${BUNDLED_LIBS[*]}"
+    else
+        echo "    No bundled C++ runtime in ${BMD_VERSION}; using system libstdc++."
+    fi
     sudoif restorecon -Rv {{ bmd_bin_dir }}
 
     # SDK RUNPATH symlinks: libDeckLinkAPI.so has RUNPATH $ORIGIN/blackmagic/DesktopVideo
-    # so it looks for libc++.so.1 etc. relative to itself. Symlink to the bin dir copies.
+    # so it looks for the bundled libs relative to itself. Symlink to the bin dir
+    # copies. Clear the directory first — a release that bundles nothing must leave
+    # no symlinks behind, or they would resolve to the deleted files above.
     echo "  Creating SDK RUNPATH symlinks..."
     SDK_RUNPATH_DIR="{{ bmd_lib_dir }}/blackmagic/DesktopVideo"
     sudoif mkdir -p "${SDK_RUNPATH_DIR}"
     for lib in libc++.so.1 libc++abi.so.1 libgcc_s.so.1; do
+        sudoif rm -f "${SDK_RUNPATH_DIR}/${lib}"
+    done
+    for lib in "${BUNDLED_LIBS[@]}"; do
         sudoif ln -sf {{ bmd_bin_dir }}/"${lib}" "${SDK_RUNPATH_DIR}/${lib}"
     done
 
