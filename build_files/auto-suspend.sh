@@ -1,15 +1,17 @@
 #!/usr/bin/bash
 # Auto-suspend guard (§spec:auto-suspend / §spec:auto-suspend-guard). Run by the hypridle idle listener.
-# Suspends to deep S3 unless the machine is in production mode or within
-# business hours (Mon-Fri 08:00-18:00 local). Manual suspend (nwg-bar
-# Sleep, Mod+Shift+L) is unaffected — this guards only the idle trigger.
+# Suspends to deep S3 unless the machine is in production or
+# hot-development mode, or within business hours (Mon-Fri 08:00-18:00
+# local). Manual suspend (nwg-bar Sleep, Mod+Shift+L) is unaffected —
+# this guards only the idle trigger.
 #
-# Clock, production-flag path, and suspend command are overridable via
-# environment variables so the decision matrix is testable without
-# suspending the host (see test/auto-suspend.test.sh).
+# Clock, flag paths, and suspend command are overridable via environment
+# variables so the decision matrix is testable without suspending the
+# host (see test/auto-suspend.test.sh).
 set -euo pipefail
 
 PRODUCTION_FLAG="${TILEFIN_PRODUCTION_FLAG:-/etc/tilefin/production-mode}"
+HOT_FLAG="${TILEFIN_HOT_DEVELOPMENT_FLAG:-/etc/tilefin/hot-development}"
 SUSPEND_CMD="${TILEFIN_SUSPEND_CMD:-systemctl suspend}"
 dow=$((10#${TILEFIN_NOW_DOW:-$(date +%u)}))   # 1=Mon .. 7=Sun
 hour=$((10#${TILEFIN_NOW_HOUR:-$(date +%H)})) # 0..23
@@ -17,6 +19,14 @@ hour=$((10#${TILEFIN_NOW_HOUR:-$(date +%H)})) # 0..23
 # Production machines never auto-suspend (§spec:production-no-idle-interrupt).
 if [ -e "$PRODUCTION_FLAG" ]; then
     echo "auto-suspend: production mode, holding" >&2
+    exit 0
+fi
+
+# Hot-development machines run unattended background work — builds, VMs,
+# capture jobs — that a suspend would kill (§spec:hot-development). The
+# display still sleeps and locks; only the machine stays awake.
+if [ -e "$HOT_FLAG" ]; then
+    echo "auto-suspend: hot-development mode, holding" >&2
     exit 0
 fi
 

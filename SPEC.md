@@ -1378,8 +1378,9 @@ boots the currently running image. `--stop` removes the flag.
 
 When production mode is on, the waybar update module text reads
 `production · <age>` and the tooltip includes a `Mode: production` line.
-When off, the text reads `development · <age>` and the tooltip shows
-`Mode: development`. Staging information continues to display as in
+When off, the text reads `development · <age>` — or
+`hot-development · <age>` under §spec:hot-development — and the tooltip
+shows the same mode name. Staging information continues to display as in
 §spec:system-services — production mode does not hide a manually-staged
 deployment.
 
@@ -1453,7 +1454,9 @@ the system auto-suspends to deep §spec:niri-compositor after 30 minutes
 idle, but only outside business hours. Business hours are Monday–Friday
 08:00–18:00 local time; 18:00:00 itself is outside the window. Manual
 suspend (nwg-bar Sleep, `Mod+Shift+L`) works at any time, in any mode
-(§spec:manual-suspend). Production mode never auto-suspends.
+(§spec:manual-suspend). Production mode never auto-suspends, and neither
+does §spec:hot-development, the opt-out for a development machine left
+running deliberately.
 
 deep §spec:niri-compositor is the target because it is the deepest sleep
 state this hardware can wake from via USB (`/sys/power/mem_sleep`
@@ -1494,14 +1497,15 @@ keeps the threshold defined in one place.
 
 ### Auto-suspend guard §spec:auto-suspend-guard
 
-A guard script suspends the system via `systemctl suspend` unless either
-condition holds:
+A guard script suspends the system via `systemctl suspend` unless one of
+these conditions holds:
 
-- `/etc/tilefin/production-mode` exists, or
+- `/etc/tilefin/production-mode` exists,
+- `/etc/tilefin/hot-development` exists (§spec:hot-development), or
 - the local time is Monday–Friday and the hour is in [08:00, 18:00).
 
 Weekday derives from `date +%u` (1–5 = Mon–Fri) and hour from
-`date +%H`. The flag path, suspend command, and current time are
+`date +%H`. The flag paths, suspend command, and current time are
 overridable via environment variables for testing.
 
 ### Idle suspend listener §spec:idle-suspend-listener
@@ -1527,6 +1531,84 @@ detection at the business-hours boundary. It is enabled image-wide via
 independent of the graphical session). The timer triggers a service that
 `try-restart`s hypridle — a no-op when hypridle is not running, so an
 absent or already-suspended session is unaffected.
+
+## Hot-development mode §spec:hot-development
+
+*Status: in progress*
+
+### Problem
+
+§spec:auto-suspend suspends an idle development machine outside business
+hours. That is right for a workstation nobody is using and wrong for one
+left running deliberately — an overnight build, a long-running VM, a
+capture soak test. The operator walks away expecting the work to
+continue; the machine sleeps 30 minutes later and the work stops.
+
+§spec:production-mode is the wrong instrument for the exemption. It
+holds auto-suspend, but it also holds idle display-off and idle lock and
+blocks automatic image staging — the whole attended-operator policy —
+when the machine needs only to stay awake. A workstation grinding
+through background work overnight is unattended: the display should
+sleep and the session should lock.
+
+### Design
+
+A second flag file, `/etc/tilefin/hot-development`, marks a development
+machine that shall not auto-suspend. Everything else stays development
+behaviour: dim at 240s, display-off at 300s, lock at 600s, and
+`rpm-ostreed-automatic.timer` keeps staging images —
+§spec:production-flag-gates-staging gates on the production flag alone.
+
+Three modes result, ordered by how much idle behaviour each holds:
+
+| Mode | Dim | Display off | Lock | Auto-suspend | Auto-staging |
+| --- | --- | --- | --- | --- | --- |
+| `development` | yes | yes | yes | outside business hours | yes |
+| `hot-development` | yes | yes | yes | never | yes |
+| `production` | yes | no | no | never | no |
+
+The gate lives in the §spec:auto-suspend-guard script, beside the
+production and business-hours conditions it joins, and is covered by the
+same decision-matrix test. Production takes precedence when both flags
+exist: it is the stricter idle policy, and its update lock has no
+hot-development counterpart.
+
+#### Rejected alternatives
+
+- **A value inside `/etc/tilefin/production-mode`** — the systemd
+  drop-in gates on `ConditionPathExists`, which reads presence, not
+  content. Splitting the meaning across a file's existence and its
+  contents makes the update lock depend on parsing.
+- **A display-off variant of `ujust production-mode`** — conflates two
+  policies. This machine is unattended; production mode assumes an
+  operator in the room (§spec:production-no-idle-interrupt).
+- **`systemd-inhibit` wrapping each long job** — correct where the job
+  is known and wrapped, but it requires every background task to opt in.
+  The mode is a property of how the machine is used this week, not of
+  one command.
+- **A longer idle timeout** — trades one wrong constant for another and
+  still suspends mid-build.
+
+### Flag holds auto-suspend §spec:hot-development-holds-suspend
+
+When `/etc/tilefin/hot-development` exists, the auto-suspend guard holds
+at every hour on every day. Idle dim, display-off, and lock fire as in
+§spec:display-manager. Manual suspend stays available
+(§spec:manual-suspend).
+
+### ujust hot-development recipe §spec:ujust-hot-development
+
+`ujust hot-development --start | --stop` creates or removes the flag and
+signals waybar as in §spec:waybar-production-indicator. `--start`
+reports that production mode takes precedence when the production flag
+exists.
+
+### Waybar surfaces hot-development §spec:waybar-hot-development-indicator
+
+When the hot-development flag exists and the production flag does not,
+the waybar update module text reads `hot-development · <age>` and the
+tooltip includes a `Mode: hot-development` line. When both flags exist,
+the module reads `production` (§spec:waybar-production-indicator).
 
 ## Encrypted credential storage (Secret Service) §spec:credential-storage
 
