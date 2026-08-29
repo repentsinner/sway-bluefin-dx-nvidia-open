@@ -1,9 +1,13 @@
 #!/bin/bash
 # Waybar module: show image age (fuzzy) and update availability
 
-# Production-mode flag (§spec:production-mode). Toggled by `ujust production-mode --start|--stop`.
+# Mode flags (§spec:production-mode, §spec:hot-development). Toggled by
+# `ujust production-mode` and `ujust hot-development`. Production wins when
+# both flags exist: it is the stricter idle policy.
 if [ -f /etc/tilefin/production-mode ]; then
     MODE="production"
+elif [ -f /etc/tilefin/hot-development ]; then
+    MODE="hot-development"
 else
     MODE="development"
 fi

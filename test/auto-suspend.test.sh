@@ -8,14 +8,16 @@ SCRIPT="$(cd "$(dirname "$0")/.." && pwd)/build_files/auto-suspend.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-NOFLAG="$TMP/absent"            # production flag absent -> development mode
+NOFLAG="$TMP/absent"            # neither flag -> development mode
 PRODFLAG="$TMP/production"; : > "$PRODFLAG"
+HOTFLAG="$TMP/hot-development"; : > "$HOTFLAG"
 
 fail=0
 # check <suspend|hold> <description> <env assignments...>
 check() {
     expect="$1"; desc="$2"; shift 2
-    out="$(env "$@" TILEFIN_SUSPEND_CMD='echo SUSPEND' "$SCRIPT" 2>/dev/null)"
+    out="$(env TILEFIN_PRODUCTION_FLAG="$NOFLAG" TILEFIN_HOT_DEVELOPMENT_FLAG="$NOFLAG" \
+        "$@" TILEFIN_SUSPEND_CMD='echo SUSPEND' "$SCRIPT" 2>/dev/null)"
     got="hold"; [ "$out" = "SUSPEND" ] && got="suspend"
     if [ "$got" = "$expect" ]; then
         printf 'ok   - %s\n' "$desc"
@@ -40,6 +42,13 @@ check suspend "Fri 18:00 end boundary"     TILEFIN_PRODUCTION_FLAG="$NOFLAG" TIL
 check suspend "Wed 23:00 night"            TILEFIN_PRODUCTION_FLAG="$NOFLAG" TILEFIN_NOW_DOW=3 TILEFIN_NOW_HOUR=23
 check suspend "Sat 14:00 weekend"          TILEFIN_PRODUCTION_FLAG="$NOFLAG" TILEFIN_NOW_DOW=6 TILEFIN_NOW_HOUR=14
 check suspend "Sun 10:00 weekend"          TILEFIN_PRODUCTION_FLAG="$NOFLAG" TILEFIN_NOW_DOW=7 TILEFIN_NOW_HOUR=10
+
+# Hot-development mode: display sleeps and locks, the machine never does
+# (§spec:hot-development). Background work outlives every idle window.
+check hold    "hot-dev + after-hours"      TILEFIN_HOT_DEVELOPMENT_FLAG="$HOTFLAG" TILEFIN_NOW_DOW=6 TILEFIN_NOW_HOUR=22
+check hold    "hot-dev + weeknight"        TILEFIN_HOT_DEVELOPMENT_FLAG="$HOTFLAG" TILEFIN_NOW_DOW=3 TILEFIN_NOW_HOUR=23
+check hold    "hot-dev + business hours"   TILEFIN_HOT_DEVELOPMENT_FLAG="$HOTFLAG" TILEFIN_NOW_DOW=2 TILEFIN_NOW_HOUR=14
+check hold    "hot-dev + production flag"  TILEFIN_HOT_DEVELOPMENT_FLAG="$HOTFLAG" TILEFIN_PRODUCTION_FLAG="$PRODFLAG" TILEFIN_NOW_DOW=7 TILEFIN_NOW_HOUR=3
 
 if [ "$fail" -eq 0 ]; then
     echo "PASS"

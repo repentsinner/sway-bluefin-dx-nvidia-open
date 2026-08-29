@@ -202,3 +202,43 @@ production-mode mode="--start":
             exit 1
             ;;
     esac
+
+# Toggle hot-development mode: idle display sleep and lock, no auto-suspend (--start | --stop)
+hot-development mode="--start":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    FLAG_DIR="/etc/tilefin"
+    FLAG_FILE="${FLAG_DIR}/hot-development"
+
+    case "{{ mode }}" in
+        --start)
+            echo "==> Enabling hot-development mode..."
+            sudo install -d -m 755 "${FLAG_DIR}"
+            sudo touch "${FLAG_FILE}"
+            echo "Flag created: ${FLAG_FILE}"
+            echo "Idle display-off and lock still fire; the machine no longer auto-suspends."
+            if [ -e "${FLAG_DIR}/production-mode" ]; then
+                echo "Note: production mode is on and takes precedence — idle display-off and lock stay off."
+            fi
+            pkill -RTMIN+8 waybar 2>/dev/null || true
+            ;;
+        --stop)
+            if [ -e "${FLAG_FILE}" ]; then
+                echo "==> Disabling hot-development mode..."
+                sudo rm -f "${FLAG_FILE}"
+                echo "Flag removed: ${FLAG_FILE}"
+                echo "Time-gated auto-suspend resumes outside business hours."
+                pkill -RTMIN+8 waybar 2>/dev/null || true
+            else
+                echo "Hot-development mode is already off (${FLAG_FILE} does not exist)."
+            fi
+            ;;
+        *)
+            echo "Usage: ujust hot-development [--start | --stop]"
+            echo ""
+            echo "  --start   Hold auto-suspend so background work survives idle periods."
+            echo "  --stop    Resume time-gated auto-suspend (§spec:auto-suspend)."
+            exit 1
+            ;;
+    esac
