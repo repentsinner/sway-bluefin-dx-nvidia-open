@@ -178,3 +178,36 @@ symbol CRCs from the shipped `nvidia.ko`, `kernel-devel` from
 `updates-archive`) and the three standing costs are recorded under
 §spec:gpudirect-storage. Likely coupled to the DOCA-on-Fedora blocker
 that gates §spec:rivermax; verify that before planning around it.
+
+## Rootless container enabling config §road:rootless-k8s-enabling
+
+### Probe cgroup delegation on base-nvidia §road:cgroup-delegation-probe
+
+Determine whether base-nvidia already delegates cgroup v2 controllers
+(`cpu`, `cpuset`, `io`, `memory`) to the user session. On a running
+image, check
+`cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/.../cgroup.controllers`
+and `systemctl cat user@.service`. If delegation is absent, add a
+`user@.service.d` drop-in. This gates the rest of the section.
+Files: `build_files/build.sh` (and a drop-in conf if needed).
+§spec:rootless-k8s-enabling
+
+**Verify:** The delegated controllers appear in the user slice's
+`cgroup.controllers` on a booted image.
+
+### Select podman as the kind provider §road:kind-podman-enabling
+
+Export `KIND_EXPERIMENTAL_PROVIDER=podman` system-wide via
+`/etc/environment.d/`, matching the electron-wayland pattern
+(§spec:wayland-config), and add any further sysctls `kind` needs beyond
+the inotify cap (§spec:inotify-instance-cap) under
+`/usr/lib/sysctl.d/`. Depends on §road:cgroup-delegation-probe.
+Files: `build_files/build.sh`, new `kind-provider.conf`,
+new sysctl `.conf`.
+§spec:rootless-k8s-enabling
+
+**Verify:** With the K8s tools installed from userbox, `kind create
+cluster` succeeds rootless on podman and `kubectl get nodes` reports
+Ready. `podman compose up` resolves the docker-compose provider from
+`~/.local/bin`. `printenv KIND_EXPERIMENTAL_PROVIDER` reads `podman` in
+a fresh shell.

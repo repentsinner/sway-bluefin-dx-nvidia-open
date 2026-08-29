@@ -426,6 +426,17 @@ cat > /etc/systemd/user.conf.d/memlock.conf <<'EOF'
 DefaultLimitMEMLOCK=infinity
 EOF
 
+# Raise the inotify instance cap. The kernel default (128) is exhausted by
+# a development workload: every conmon (one per podman container, including
+# userbox and kind nodes) takes an instance, as do editors, direnv, and file
+# watchers. Exhaustion shows up as "conmon: Failed to create inotify fd".
+# See §spec:inotify-instance-cap.
+mkdir -p /usr/lib/sysctl.d
+cat > /usr/lib/sysctl.d/90-inotify.conf <<'EOF'
+# 512 matches the kind rootless-podman recommendation
+fs.inotify.max_user_instances = 512
+EOF
+
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
