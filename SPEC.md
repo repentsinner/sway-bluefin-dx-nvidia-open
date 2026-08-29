@@ -2040,11 +2040,12 @@ podman generally, not just `kind` — so it ships ahead of them.
 ### Open questions
 
 - Does base-nvidia already ship cgroup v2 delegation for the user
-  session, or must the image add the `user@.service.d` drop-in?
+  session, or does the image need to add the `user@.service.d`
+  drop-in?
 - `kind` exported from userbox runs inside the distrobox. Does it drive
   the host podman cleanly through the exported wrapper, or does the
   nesting force `kind` onto the host `PATH`? This determines whether the
-  userbox split is sufficient or the image must also carry the binary.
+  userbox split is sufficient or the image also carries the binary.
 
 Requirements for cgroup delegation and the provider env var follow once
 the cgroup delegation state on base-nvidia and the
