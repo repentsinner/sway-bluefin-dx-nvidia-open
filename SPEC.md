@@ -2042,6 +2042,86 @@ machine until this is understood. Booting with `enforcing=0` restores
 a working system on a machine already in this state, at the cost of
 running without SELinux.
 
+## Rootless container enabling config for local Kubernetes §spec:rootless-k8s-enabling
+
+*Status: in progress*
+
+### Problem
+
+Local Kubernetes development with `kind` on rootless podman, and
+`podman compose` workflows, fail out of the box. `kind` needs cgroup
+v2 controllers (`cpu`, `cpuset`, `io`, `memory`) delegated to the
+user's systemd session before it can run rootless on podman; without
+delegation, cluster nodes fail to start. `podman compose` requires a
+compose provider binary in `$PATH` and finds none.
+
+A second limit bites before `kind` is even installed. The kernel caps
+inotify instances per user at 128 by default. Every `conmon` — one per
+podman container — holds an instance, alongside editors, direnv, and
+file watchers; a `kind` cluster adds one per node container. The cap is
+reached under an ordinary development session: podman logs
+`conmon: Failed to create inotify fd` and starts containers whose
+monitor cannot watch their exit.
+
+The provider and the client tools (`kubectl`, `kind`, `helm`,
+`docker-compose`) are CLI dev toolchains — by the image boundary they
+belong in userbox, not the image (§spec:image-boundary). But the
+host-level enabling config those tools depend on cannot live in a
+distrobox: cgroup delegation and kernel sysctls are system state only
+the image can set.
+
+Reported in #62. The tooling half of #62 is tracked in
+[repentsinner/userbox](https://github.com/repentsinner/userbox); this
+section covers only the image-side enabling config.
+
+### Design
+
+The image delivers the host prerequisites for rootless `kind` on podman
+and leaves the binaries to userbox:
+
+- **cgroup v2 controller delegation** to the user session, via a
+  `systemd` drop-in under `user@.service.d`, so rootless podman (and
+  `kind`'s node containers) can create sub-cgroups for `cpu`, `cpuset`,
+  `io`, and `memory`.
+- **`KIND_EXPERIMENTAL_PROVIDER=podman`** exported system-wide via
+  `/etc/environment.d/`, matching the existing electron-wayland pattern
+  (§spec:wayland-config), so `kind` selects podman without per-user
+  shell config.
+- **A raised inotify instance cap** (§spec:inotify-instance-cap) and any
+  further sysctls `kind` requires to run rootless on podman, via
+  `/usr/lib/sysctl.d/`.
+
+The base image may already delegate cgroup controllers for rootless
+podman; if so, this section reduces to verifying and documenting that,
+plus the provider env var and any missing sysctls.
+
+The inotify cap is independent of the open questions below — it blocks
+podman generally, not just `kind` — so it ships ahead of them.
+
+### Open questions
+
+- Does base-nvidia already ship cgroup v2 delegation for the user
+  session, or does the image need to add the `user@.service.d`
+  drop-in?
+- `kind` exported from userbox runs inside the distrobox. Does it drive
+  the host podman cleanly through the exported wrapper, or does the
+  nesting force `kind` onto the host `PATH`? This determines whether the
+  userbox split is sufficient or the image also carries the binary.
+
+Requirements for cgroup delegation and the provider env var follow once
+the cgroup delegation state on base-nvidia and the
+kind-in-distrobox-vs-host question resolve via `/plan`.
+
+### Raised inotify instance cap §spec:inotify-instance-cap
+
+`/usr/lib/sysctl.d/90-inotify.conf` sets
+`fs.inotify.max_user_instances = 512`, raising the kernel default of
+128 to the value `kind` documents for rootless podman. Nothing else
+under `/usr/lib/sysctl.d/` or `/etc/sysctl.d/` sets the key, so the
+drop-in applies uncontested at boot. Watches
+(`fs.inotify.max_user_watches`) are left to the kernel, which scales
+them with system memory well above the 524288 `kind` asks for.
+
 ## Out of scope §spec:out-of-scope
 
 *Status: complete*
@@ -2060,3 +2140,7 @@ running without SELinux.
   rendering (§spec:egl-wayland); Flutter itself runs in the userbox.
 - **Flatpak apps beyond Bitwarden**: User-installed via
   `flatpak install --user`.
+- **Kubernetes/compose client tools**: `kubectl`, `kind`, `helm`, and
+  the `docker-compose` provider are CLI dev toolchains and live in
+  repentsinner/userbox, not the image. The image-side enabling config
+  for rootless `kind` on podman is in scope (S28).
