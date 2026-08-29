@@ -245,6 +245,12 @@ bmd-install tarball:
     # Systemd: kernel module loader
     # Uses bash -c with lsmod guard so insmod is skipped if already loaded
     # (e.g. re-running bmd-install without rebooting).
+    #
+    # The trailing space in each grep pattern anchors the match to a whole
+    # module name, so ^blackmagic does not also match blackmagic_io. Quote it
+    # with double quotes, not a backslash escape: systemd resolves escape
+    # sequences even inside single-quoted ExecStart arguments, so '\ ' is
+    # stripped ("Ignoring unknown escape sequences") and the anchor is lost.
     echo "  Installing systemd services..."
     MODULE_DIR="{{ bmd_module_dir }}"
     printf '%s\n' \
@@ -255,9 +261,9 @@ bmd-install tarball:
         '[Service]' \
         'Type=oneshot' \
         'RemainAfterExit=yes' \
-        "ExecStart=/bin/bash -c 'lsmod | grep -q ^blackmagic\\ || /sbin/insmod ${MODULE_DIR}/blackmagic.ko'" \
-        "ExecStart=/bin/bash -c 'lsmod | grep -q ^blackmagic_io\\ || /sbin/insmod ${MODULE_DIR}/blackmagic-io.ko'" \
-        "ExecStart=/bin/bash -c 'lsmod | grep -q ^snd_blackmagic_io\\ || /sbin/insmod ${MODULE_DIR}/snd_blackmagic-io.ko'" \
+        "ExecStart=/bin/bash -c 'lsmod | grep -q \"^blackmagic \" || /sbin/insmod ${MODULE_DIR}/blackmagic.ko'" \
+        "ExecStart=/bin/bash -c 'lsmod | grep -q \"^blackmagic_io \" || /sbin/insmod ${MODULE_DIR}/blackmagic-io.ko'" \
+        "ExecStart=/bin/bash -c 'lsmod | grep -q \"^snd_blackmagic_io \" || /sbin/insmod ${MODULE_DIR}/snd_blackmagic-io.ko'" \
         'ExecStop=-/sbin/rmmod snd_blackmagic-io' \
         'ExecStop=-/sbin/rmmod blackmagic-io' \
         'ExecStop=-/sbin/rmmod blackmagic' \
