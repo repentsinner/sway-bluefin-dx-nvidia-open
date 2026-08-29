@@ -162,24 +162,50 @@ bmd-install tarball:
 
     # Userspace binaries + private runtime libs (co-located so RUNPATH $ORIGIN works)
     echo "  Installing userspace binaries and runtime libraries..."
+    DV_SRC="${RPM_ROOT}/usr/lib64/blackmagic/DesktopVideo"
     sudoif mkdir -p {{ bmd_bin_dir }}
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/DesktopVideoHelper {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/DesktopVideoNotifier {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/DesktopVideoUpdateTool {{ bmd_bin_dir }}/
+    for f in DesktopVideoHelper DesktopVideoNotifier DesktopVideoUpdateTool \
+             libDVUpdate.so libusb-1.0.so.0; do
+        sudoif cp "${DV_SRC}/${f}" {{ bmd_bin_dir }}/
+    done
     sudoif ln -sf DesktopVideoUpdateTool {{ bmd_bin_dir }}/BlackmagicFirmwareUpdater
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libc++.so.1 {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libc++abi.so.1 {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libgcc_s.so.1 {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libDVUpdate.so {{ bmd_bin_dir }}/
-    sudoif cp "${RPM_ROOT}"/usr/lib64/blackmagic/DesktopVideo/libusb-1.0.so.0 {{ bmd_bin_dir }}/
+
+    # Bundled C++ runtime. Shipped up to 16.0.1a2; dropped in 16.1a3, whose
+    # binaries link libstdc++.so.6 and libgcc_s.so.1 and resolve both through
+    # ld.so. Copy only what the release ships, and delete stragglers from an
+    # earlier version: DesktopVideoUpdateTool has RUNPATH $ORIGIN, so anything
+    # left in this directory is searched before the system paths and a stale
+    # libgcc_s.so.1 would pair a new binary with an old ABI.
+    BUNDLED_LIBS=()
+    for lib in libc++.so.1 libc++abi.so.1 libgcc_s.so.1; do
+        if [[ -e "${DV_SRC}/${lib}" ]]; then
+            sudoif cp "${DV_SRC}/${lib}" {{ bmd_bin_dir }}/
+            BUNDLED_LIBS+=("${lib}")
+        else
+            sudoif rm -f {{ bmd_bin_dir }}/"${lib}"
+        fi
+    done
+    if (( ${#BUNDLED_LIBS[@]} > 0 )); then
+        echo "    Bundled C++ runtime: ${BUNDLED_LIBS[*]}"
+    else
+        echo "    No bundled C++ runtime in ${BMD_VERSION}; using system libstdc++."
+    fi
     sudoif restorecon -Rv {{ bmd_bin_dir }}
 
-    # SDK RUNPATH symlinks: libDeckLinkAPI.so has RUNPATH $ORIGIN/blackmagic/DesktopVideo
-    # so it looks for libc++.so.1 etc. relative to itself. Symlink to the bin dir copies.
+    # SDK RUNPATH symlinks. Releases that bundle the C++ runtime give
+    # libDeckLinkAPI.so a RUNPATH of $ORIGIN/blackmagic/DesktopVideo, so it
+    # finds those libs relative to itself; symlink them to the bin dir copies.
+    # 16.1a3 carries no RUNPATH at all and needs none of this, so the loop is
+    # a no-op there and the step is kept only for the older releases. Clear the
+    # directory first either way — a release that bundles nothing must leave no
+    # symlinks behind, or they would resolve to the deleted files above.
     echo "  Creating SDK RUNPATH symlinks..."
     SDK_RUNPATH_DIR="{{ bmd_lib_dir }}/blackmagic/DesktopVideo"
     sudoif mkdir -p "${SDK_RUNPATH_DIR}"
     for lib in libc++.so.1 libc++abi.so.1 libgcc_s.so.1; do
+        sudoif rm -f "${SDK_RUNPATH_DIR}/${lib}"
+    done
+    for lib in "${BUNDLED_LIBS[@]}"; do
         sudoif ln -sf {{ bmd_bin_dir }}/"${lib}" "${SDK_RUNPATH_DIR}/${lib}"
     done
 
@@ -223,6 +249,12 @@ bmd-install tarball:
     # Systemd: kernel module loader
     # Uses bash -c with lsmod guard so insmod is skipped if already loaded
     # (e.g. re-running bmd-install without rebooting).
+    #
+    # The trailing space in each grep pattern anchors the match to a whole
+    # module name, so ^blackmagic does not also match blackmagic_io. Quote it
+    # with double quotes, not a backslash escape: systemd resolves escape
+    # sequences even inside single-quoted ExecStart arguments, so '\ ' is
+    # stripped ("Ignoring unknown escape sequences") and the anchor is lost.
     echo "  Installing systemd services..."
     MODULE_DIR="{{ bmd_module_dir }}"
     printf '%s\n' \
@@ -233,9 +265,9 @@ bmd-install tarball:
         '[Service]' \
         'Type=oneshot' \
         'RemainAfterExit=yes' \
-        "ExecStart=/bin/bash -c 'lsmod | grep -q ^blackmagic\\ || /sbin/insmod ${MODULE_DIR}/blackmagic.ko'" \
-        "ExecStart=/bin/bash -c 'lsmod | grep -q ^blackmagic_io\\ || /sbin/insmod ${MODULE_DIR}/blackmagic-io.ko'" \
-        "ExecStart=/bin/bash -c 'lsmod | grep -q ^snd_blackmagic_io\\ || /sbin/insmod ${MODULE_DIR}/snd_blackmagic-io.ko'" \
+        "ExecStart=/bin/bash -c 'lsmod | grep -q \"^blackmagic \" || /sbin/insmod ${MODULE_DIR}/blackmagic.ko'" \
+        "ExecStart=/bin/bash -c 'lsmod | grep -q \"^blackmagic_io \" || /sbin/insmod ${MODULE_DIR}/blackmagic-io.ko'" \
+        "ExecStart=/bin/bash -c 'lsmod | grep -q \"^snd_blackmagic_io \" || /sbin/insmod ${MODULE_DIR}/snd_blackmagic-io.ko'" \
         'ExecStop=-/sbin/rmmod snd_blackmagic-io' \
         'ExecStop=-/sbin/rmmod blackmagic-io' \
         'ExecStop=-/sbin/rmmod blackmagic' \
