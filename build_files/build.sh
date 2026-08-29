@@ -174,6 +174,15 @@ ALL_PACKAGES=(
 echo "Installing ${#ALL_PACKAGES[@]} packages..."
 dnf5 install -y --setopt=install_weak_deps=False "${ALL_PACKAGES[@]}"
 
+# VMware guest tooling ships in the base image but this is bare metal
+# (systemd-detect-virt reports none). open-vm-tools-desktop drops
+# /etc/xdg/autostart/vmware-user.desktop, which fails at every login with
+# "could not open /proc/fs/vmblock/dev". Nothing else depends on it.
+if rpm -q open-vm-tools >/dev/null 2>&1; then
+    echo "Removing VMware guest tooling (bare metal host)..."
+    dnf5 remove -y open-vm-tools open-vm-tools-desktop
+fi
+
 ###############################################################################
 # Enable System Services (installed packages)
 ###############################################################################
@@ -238,6 +247,15 @@ mkdir -p /usr/share/wayland-sessions
 
 systemctl enable greetd.service
 
+# The base image enables authselect's with-fingerprint, but fprintd-pam is
+# not installed and this hardware has no reader. The generated stack then
+# references a missing pam_fprintd.so and logs a dlopen error on every
+# login. Drop the feature so the stack matches what is installed.
+if authselect current 2>/dev/null | grep -q with-fingerprint; then
+    echo "Disabling authselect with-fingerprint (no reader, no fprintd-pam)..."
+    authselect disable-feature with-fingerprint
+fi
+
 ###############################################################################
 # Configure Wayland Environment
 ###############################################################################
@@ -267,6 +285,10 @@ cp /ctx/local-path.sh /etc/profile.d/local-path.sh
 mkdir -p /etc/fish/conf.d
 cp /ctx/tool-aliases.fish /etc/fish/conf.d/tool-aliases.fish
 cp /ctx/local-path.fish /etc/fish/conf.d/local-path.fish
+
+# Silence kbd unicode_start on the tty1 login shell (see the file's comment)
+mkdir -p /etc/fish/functions
+cp /ctx/unicode-start-noop.fish /etc/fish/functions/unicode_start.fish
 
 # Default userbox distrobox declaration (bootstrap for new accounts)
 mkdir -p /etc/skel/.config/distrobox
