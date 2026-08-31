@@ -437,6 +437,39 @@ cat > /usr/lib/sysctl.d/90-inotify.conf <<'EOF'
 fs.inotify.max_user_instances = 512
 EOF
 
+# Turn an unrecoverable hang into a recorded panic. The capture chain below
+# this is already complete — pstore registers the firmware-backed ERST
+# backend and systemd-pstore.service is enabled in the base image — but
+# nothing converted a hang into a panic, so a freeze left no evidence at all.
+# See §spec:crash-capture.
+cat > /usr/lib/sysctl.d/91-crash-capture.conf <<'EOF'
+# All SysRq functions. Alt+SysRq+w (blocked tasks) and Alt+SysRq+l (CPU
+# backtraces) put a diagnosis in the log while the machine is still wedged;
+# REISUB gets a clean sync out of one that is past saving. The kernel default
+# of 16 permits only an emergency sync.
+kernel.sysrq = 1
+
+# A hard lockup — a CPU that stopped answering the NMI watchdog — is already
+# fatal. Panicking records why, instead of leaving a silent freeze.
+kernel.hardlockup_panic = 1
+
+# An oops leaves the kernel in an undefined state. Panic while the trace can
+# still be written rather than limping on to a worse failure.
+kernel.panic_on_oops = 1
+
+# Reboot 20s after a panic, which gives pstore time to write. The default of 0
+# leaves the machine dead at the panic screen until someone walks over to it,
+# and the trace is in pstore either way.
+kernel.panic = 20
+
+# kernel.softlockup_panic is deliberately left at 0. A soft lockup is 20s in
+# the kernel without scheduling, which heavy DMA from the capture card or the
+# NICs can reach without the machine being wedged, so enabling it trades a
+# silent freeze for spurious reboots. Turn it on for the duration of a bisect,
+# not as standing configuration.
+EOF
+
+
 # Enable IOMMU for GPU passthrough (harmless on single-GPU systems)
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d

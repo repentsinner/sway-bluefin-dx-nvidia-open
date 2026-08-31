@@ -2204,6 +2204,88 @@ drop-in applies uncontested at boot. Watches
 (`fs.inotify.max_user_watches`) are left to the kernel, which scales
 them with system memory well above the 524288 `kind` asks for.
 
+## Crash capture §spec:crash-capture
+
+*Status: in progress*
+
+### Problem
+
+molecule froze hard on 2026-08-31 at 00:07:43 and left no evidence. The
+journal stops mid-second: no panic, no oops, no OOM kill, no NVIDIA `Xid`,
+no MCE, no fatal PCIe AER, no shutdown. The freeze came 81 seconds after an
+S3 resume and 71 seconds after Discord — an Electron client, so the first
+substantial GPU consumer of that session — started. The last two `phc2sys`
+samples show the system clock losing 5.2 ms against both NIC hardware
+clocks, a common-mode error that means the machine was already stalling a
+second before it went silent. Boots -7 through -2 all ended in clean
+shutdowns, so this is not the machine's habit.
+
+None of that is diagnosable after the fact, and the reason is configuration
+rather than bad luck. The capture chain is already complete: `pstore`
+registers the firmware-backed ERST backend, `/sys/fs/pstore` is mounted,
+and the base image enables `systemd-pstore.service`, which copies any
+record into `/var/lib/systemd/pstore` on the next boot. What was missing is
+anything that converts a hang into a panic for pstore to capture.
+`kernel.panic_on_oops`, `kernel.hardlockup_panic` and
+`kernel.softlockup_panic` all read `0`, and `kernel.sysrq` read `16` —
+emergency sync alone, so the keyboard offered no way to dump task state or
+to bring the machine down cleanly. `/var/lib/systemd/pstore` does not
+exist, which is consistent: nothing has ever panicked here.
+
+### Design
+
+`/usr/lib/sysctl.d/91-crash-capture.conf` closes that gap, sitting
+alongside `90-inotify.conf` (§spec:inotify-instance-cap). No kernel arg and
+no new service is involved; the backend and the collector are already
+present and only the policy sysctls were absent.
+
+### Crash capture sysctls §spec:crash-capture-sysctls
+
+| Setting | Value | Default | Reason |
+| --- | --- | --- | --- |
+| `kernel.sysrq` | `1` | `16` | All SysRq functions. `Alt+SysRq+w` dumps blocked tasks and `Alt+SysRq+l` backtraces every CPU into the log while the machine is still wedged; REISUB brings down one that is past saving. |
+| `kernel.hardlockup_panic` | `1` | `0` | A CPU that stopped answering the NMI watchdog is already fatal. Panicking records why. |
+| `kernel.panic_on_oops` | `1` | `0` | An oops leaves the kernel undefined. Panic while the trace can still be written. |
+| `kernel.panic` | `20` | `0` | Reboot 20 s after a panic. `0` leaves the machine dead at the panic screen, and pstore holds the trace either way. |
+
+`kernel.softlockup_panic` stays at `0`. A soft lockup is 20 s in the kernel
+without scheduling, which heavy DMA from the DeckLink
+(§spec:decklink-capture) or the ConnectX-6 can reach on a machine that is
+not wedged, so enabling it trades a silent freeze for spurious reboots. It
+should be raised for the duration of a bisect and lowered afterwards.
+
+### Verification
+
+Read the values back after a reboot onto the image:
+
+```console
+$ sysctl kernel.sysrq kernel.panic kernel.panic_on_oops kernel.hardlockup_panic
+kernel.sysrq = 1
+kernel.panic = 20
+kernel.panic_on_oops = 1
+kernel.hardlockup_panic = 1
+```
+
+Whether ERST records a panic on this board is untested — no panic has
+occurred since the backend was noticed. `echo c > /proc/sysrq-trigger`
+forces one and is the only way to test it, at the cost of a deliberate
+crash. Run it on an idle machine, then check `/var/lib/systemd/pstore` on
+the next boot.
+
+### Open questions
+
+- Does the 2026-08-31 freeze recur, and what caused it? It is
+  unattributed. The S3 resume path, the 610.57.04 driver and 7.1.10-200
+  kernel that landed together on 2026-08-28, and the first GPU client
+  after resume are all candidates, and no evidence separates them.
+  §spec:display-deep-sleep records a related but distinct failure —
+  display DPMS cycling killing Electron clients, traced to the monitor
+  rather than the GPU. That one lost applications; this one lost the
+  machine.
+- Is the same day's driver segfault related? `bm_workbench` took SIGSEGV
+  inside `libnvidia-eglcore.so.610.57.04` at 13:00 on 2026-08-30, eleven
+  hours earlier. Same driver, same GPU stack, no established link.
+
 ## Out of scope §spec:out-of-scope
 
 *Status: complete*
