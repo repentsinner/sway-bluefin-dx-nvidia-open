@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # `governance / lint` is a required status check, so it subscribes to the
+  # merge queue too — see the note in build.yml.
+  merge_group:
 
 jobs:
   # Job id `governance` makes the check-run name `governance / lint` rather

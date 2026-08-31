@@ -6,6 +6,14 @@ on:
       - main
     # No paths-ignore here — CI Gate must always report a status.
     # The 'changes' job below skips the build for docs-only PRs.
+  # CI Gate is a required status check, so this workflow subscribes to
+  # merge_group as well: a check that does not run inside the queue never
+  # reports, and the queue waits on it forever. The 'changes' job is
+  # pull_request-only, and build_push's `github.event_name != 'pull_request'`
+  # arm covers the queue, so the build runs there. The push and signing steps
+  # stay gated on refs/heads/main, so a gh-readonly-queue ref builds the image
+  # without publishing it (§spec:require-aggregate-check).
+  merge_group:
   schedule:
     - cron: '05 10 * * *'  # 10:05am UTC everyday
   push:
