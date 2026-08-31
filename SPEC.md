@@ -647,21 +647,51 @@ Changes from the previous base:
 
 ## Automated releases §spec:releases
 
-*Status: in progress*
+*Status: complete*
 
-release-please generates semver tags and a CHANGELOG from conventional
-commits. Configuration uses the `simple` release type (`version.txt` +
-`CHANGELOG.md`).
+Flywheel (`point-source/flywheel`) generates semver tags and a CHANGELOG
+from conventional commits, driven by `.flywheel.yml`. It replaced
+release-please on 2026-08-31.
 
-Three workflows support the release lifecycle:
+Two flywheel workflows carry it, both SHA-pinned rather than tracking a
+tag: the action receives a GitHub App private key, and a floating tag would
+let its repository repoint that credential at new code without review.
 
-- **release-please.yml** — runs on push to main. Opens or updates a
-  release PR. When the PR merges, creates a GitHub Release with a
-  semver tag.
-- **auto-merge-release.yml** — auto-merges release PRs opened by
-  release-please after CI passes.
-- **build.yml** — adds semver tags to the container image when a git
-  tag exists on the commit (e.g., `ghcr.io/.../tilefin-nvidia-open:0.4.0`).
+- **flywheel-pr.yml** — runs on pull request. Checks the conventional-commit
+  title and auto-merges the types `.flywheel.yml` permits.
+- **flywheel-push.yml** — runs on push. Cuts a release on the managed
+  branch and maintains `CHANGELOG.md` and `version.txt`.
+
+`build.yml` keeps its existing role, adding semver tags to the container
+image when a git tag exists on the commit (e.g.
+`ghcr.io/.../tilefin-nvidia-open:0.4.0`).
+
+`auto_merge` is deliberately narrow. This image boots a workstation, so
+every version-bumping type — `feat`, `fix`, `perf`, and any `!` breaking
+variant — gates on a human, and only non-bumping types merge unattended.
+
+Credentials are `vars.FLYWHEEL_GH_APP_ID` and
+`secrets.FLYWHEEL_GH_APP_PRIVATE_KEY`, from the Flywheel GitHub App
+installed on the account. Dependabot is a separate gate: those PRs
+auto-merge under `chore` only once the App private key is also registered
+in the Dependabot secret store, and wait for review until then.
+
+### Why release-please was dropped
+
+No defect in release-please. Other projects maintained alongside this one
+converged on flywheel and this repository was the outlier.
+
+One artefact of the old setup is worth recording, because it hid in plain
+sight for months. `auto-merge-release.yml` existed to merge release PRs once
+CI passed, and **never executed a single step**. Its `if:` value carried
+`'autorelease: pending'` unquoted, and YAML terminates a plain scalar at a
+colon-space regardless of the inner single quotes, so the file never parsed.
+GitHub could not read it well enough to know it wanted `pull_request` only,
+so every push produced a zero-job failed run — identifiable by the run being
+named for the file path rather than the workflow. Release PRs were therefore
+never auto-merged, and the red mark on every push was that same failure
+repeating. Flywheel takes over the capability, so the file is deleted rather
+than repaired.
 
 Daily and push builds continue producing `latest` and date-stamped
 tags. Semver tags are additive — they appear only when a release is cut.
@@ -677,7 +707,7 @@ Bluefin-DX), 0.3.0 (Niri on Bluefin-DX), 0.4.0 (Niri on base-nvidia).
 
 The build workflow produces `latest` and `latest.YYYYMMDD` tags on
 every push to main and daily cron. Semver tags (`0.4.4`) are generated
-for release-please tag pushes but never published due to two
+for release tag pushes but never published due to two
 independent bugs:
 
 1. **Job dependency skip cascade.** The `build_push` job declares
@@ -722,11 +752,11 @@ Two update channels serve different stability preferences:
 | Channel | Tag | Builds on | Contains |
 | --- | --- | --- | --- |
 | `latest` | `latest`, `latest.v0.4.4.20260318` | Daily cron, push to main | Latest main + whatever upstream shipped that day |
-| `stable` | `stable`, `0.4.4` | release-please tag push (`v*`) | Exactly the code at the release tag, built against current upstream |
+| `stable` | `stable`, `0.4.4` | flywheel tag push (`v*`) | Exactly the code at the release tag, built against current upstream |
 
 `bootc upgrade` pulls the newest image for whichever tag the machine
 tracks. `latest` advances daily. `stable` advances only when
-release-please creates a new tag.
+flywheel creates a new tag.
 
 #### Tag format
 
@@ -736,7 +766,7 @@ Daily and push-to-main builds embed the current semver from
 - `latest` — rolling, overwritten each build
 - `latest.v0.4.4.20260318` — pinned daily snapshot with semver provenance
 
-Tag-triggered builds (release-please `v*` tags) produce:
+Tag-triggered builds (flywheel `v*` tags) produce:
 
 - `stable` — rolling release channel, overwritten each release
 - `0.4.4` — pinned semver snapshot (rollback target)
@@ -1803,20 +1833,19 @@ findings drove the reversal:
   `XferType: GPUD`. The acceptance test did not catch that, because it
   tested for the `p2pmem/` directory, and the directory exists with an
   empty pool.
-- **Nothing consumes it yet.** backlit_molecule reads through KvikIO,
-  whose `KVIKIO_COMPAT_MODE` presents one API over cuFile and POSIX and
-  falls back where GDS is absent, so a dev host without it works
-  unchanged. Its own benchmark records that direct and bounced reads
-  complete in the same time on this host, because NVMe latency swamps
-  both — the win here is host CPU and RAM, not latency.
+- **Nothing consumes it yet.** The consuming project reads through an
+  abstraction that presents one API over cuFile and POSIX and falls back
+  where GDS is absent, so a dev host without it works unchanged. Its own
+  benchmark records direct and bounced reads completing in the same time on
+  this host, because NVMe latency swamps both — the win here is host CPU and
+  RAM, not latency.
 
-  This bullet previously claimed the consumer needed only Weka or Lustre,
-  which `p2pdma` cannot serve. That was half right. The headline
-  architecture does target a distributed filesystem
-  (§road:gpudirect-storage, which needs `nvidia-fs.ko`), but
-  backlit_molecule also carries a *local* NVMe item — reading EXR regions
-  straight into device memory — that `p2pdma` serves exactly. Restoring
-  this section is the first step when that work starts.
+  This bullet previously claimed the consumer needed only a distributed
+  filesystem, which `p2pdma` cannot serve. That was half right. The
+  consumer's eventual target is distributed (§road:gpudirect-storage, which
+  needs `nvidia-fs.ko`), but it also has a *local* NVMe read path that
+  `p2pdma` serves exactly. Restoring this section is the first step when
+  that work starts.
 - **It is not free.** `RmForceDisableIomapWC=1` maps BAR1 uncached, which
   slows every CPU-side write through the aperture, and `RMForceStaticBar1`
   pins the whole 48 GiB framebuffer into the aperture across suspend and
