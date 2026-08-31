@@ -1,0 +1,48 @@
+# quality — fast static analysis gate (§spec:quality-gate).
+#
+# GitHub names a required status check after the JOB, not the workflow, so
+# the job id `quality` is the check-run name registered in the
+# `Flywheel - review` ruleset. Renaming the job means re-pointing the ruleset.
+#
+# This is deliberately the *fast* gate: seconds, not the image build. The
+# artifact is gated separately by `CI Gate` in build.yml, which aggregates
+# the build and reports success when it is legitimately skipped.
+name: quality
+
+on:
+  pull_request:
+  merge_group: # required for merge-queue compatibility
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      # Classify the triggering commit so Flywheel's own commits
+      # (chore(release):, back-merge) skip the suite. A step-level `if:` that
+      # evaluates false still reports `success` to the required-status-checks
+      # rule, so the gate stays satisfied rather than hanging.
+      - id: classify
+        uses: point-source/flywheel/classify@59758d1940ebe054ce9fdd4b7a7dc79a0cf235e0 # v2.1.0
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        if: steps.classify.outputs.derived_release_commit != 'true'
+
+      # build.sh is the image: ~500 lines of shell that nothing else validates.
+      # Pinned image rather than the runner's shellcheck so the version does
+      # not drift under us.
+      - name: shellcheck
+        if: steps.classify.outputs.derived_release_commit != 'true'
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck:v0.11.0 \
+            --severity=warning build_files/*.sh test/*.sh
+
+      # Catches what review does not: an unparseable workflow reports as a
+      # zero-job failed run with no error text, which is how
+      # auto-merge-release.yml stayed broken from its first commit until it
+      # was deleted. actionlint names the file, line and column.
+      - name: actionlint
+        if: steps.classify.outputs.derived_release_commit != 'true'
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint:1.7.12 -color
