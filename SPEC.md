@@ -699,6 +699,70 @@ tags. Semver tags are additive — they appear only when a release is cut.
 Version history: 0.1.0 (Sway on Bluefin-DX), 0.2.0 (Hyprland on
 Bluefin-DX), 0.3.0 (Niri on Bluefin-DX), 0.4.0 (Niri on base-nvidia).
 
+## Required status checks §spec:quality-gate
+
+*Status: complete*
+
+### Problem
+
+Two workflows in this repository failed silently for months.
+`auto-merge-release.yml` never parsed, so it never ran a step
+(§spec:releases). `build.yml`'s path filter was missing
+`predicate-quantifier`, so its docs-only skip never fired and every
+documentation change paid a full image build. Neither was visible in review,
+and no check would have caught either.
+
+Nothing validated `build_files/build.sh` — roughly 500 lines of shell that
+*is* the image — and nothing validated the workflows themselves.
+
+### Design
+
+Four required status checks, named identically across the repositories
+maintained alongside this one so one ruleset definition serves all of them.
+The names are the contract; what runs inside each varies by repository.
+
+| Check | Role | Cost |
+| --- | --- | --- |
+| `flywheel/conventional-commit` | commit message hygiene | supplied by flywheel |
+| `governance / lint` | SPEC, ROADMAP and README governance | seconds |
+| `quality` | fast static analysis | seconds |
+| `CI Gate` | aggregate over the artifact build | skips cheaply, gates when it matters |
+
+A repository with nothing to put in a slot ships the job saying so, rather
+than dropping the check from the ruleset. Removing it trades a visible gap
+for an invisible one, and the entry has to be restored the moment the
+repository grows the capability.
+
+### Require the aggregate, never the build §spec:require-aggregate-check
+
+A required status check shall name a job that reports on every run.
+
+`build_push` skips on documentation-only pull requests, and a skipped job
+reports nothing at all — so requiring it directly leaves the check pending
+forever and the pull request unmergeable. `CI Gate` exists for this: it runs
+under `if: always()`, and treats a `skipped` build as a pass and a failed one
+as a failure.
+
+The same trap applies to a check name copied between repositories. A context
+no workflow emits is indistinguishable, from the ruleset's side, from one
+that has not reported yet.
+
+### Quality gate contents §spec:quality-gate-contents
+
+`quality` runs `shellcheck` over `build_files/` and `test/`, and `actionlint`
+over `.github/workflows/`. Both run from version-pinned images rather than
+the runner's copies, so the tool version does not drift underneath the gate.
+
+`actionlint` is the direct answer to the failure that motivated this section:
+run against the deleted `auto-merge-release.yml`, it reports
+`could not parse as YAML` with the file, line and column. Adopting it also
+found a `concurrency` group referencing `inputs` that `build.yml` never
+declares.
+
+The gate deliberately excludes the image build. That takes around 27 minutes
+and is already gated by `CI Gate`; folding it in would make every
+documentation change wait on it twice.
+
 ## Dual-channel image publishing §spec:image-channels
 
 *Status: not started*

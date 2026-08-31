@@ -6,7 +6,12 @@ on:
   pull_request:
 
 jobs:
-  lint:
+  # Job id `governance` makes the check-run name `governance / lint` rather
+  # than `lint / lint`, which said nothing about what was being linted. That
+  # context string is what the `Flywheel - review` ruleset registers as a
+  # required status check, so renaming this job means re-pointing the ruleset
+  # entry to match.
+  governance:
     uses: repentsinner/symphonize/.github/workflows/governance-lint.yml@notation--v0
     with:
       readme-type: ""
