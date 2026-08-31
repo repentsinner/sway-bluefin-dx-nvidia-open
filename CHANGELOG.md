@@ -1,3 +1,27 @@
+# [0.5.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.13...v0.5.0) (2026-08-31)
+
+
+### Bug Fixes
+
+* **bmd:** survive releases that drop the bundled C++ runtime ([#77](https://github.com/repentsinner/tilefin-nvidia-open/issues/77)) ([8e6ac15](https://github.com/repentsinner/tilefin-nvidia-open/commit/8e6ac1543ad5c3b182b0304c3237adf5c28f8c5e))
+* **build:** restore a buildable image on Fedora 44 ([#68](https://github.com/repentsinner/tilefin-nvidia-open/issues/68)) ([363c5f0](https://github.com/repentsinner/tilefin-nvidia-open/commit/363c5f04b89bb88fe23cd16be31c35c32c21116c))
+* **nvidia:** idiomatic BAR1 and crash capture after the 2026-08-31 freeze ([#82](https://github.com/repentsinner/tilefin-nvidia-open/issues/82)) ([076efa3](https://github.com/repentsinner/tilefin-nvidia-open/commit/076efa31648568b398f2b7e2599a025656228836))
+* **session:** create XDG user directories so Flatpak grants resolve ([#71](https://github.com/repentsinner/tilefin-nvidia-open/issues/71)) ([2c93906](https://github.com/repentsinner/tilefin-nvidia-open/commit/2c939064e7ff200e889d53dc06a55f53cbdc83a2))
+* **session:** silence login-time diagnostics on tty1 ([#76](https://github.com/repentsinner/tilefin-nvidia-open/issues/76)) ([e2131b7](https://github.com/repentsinner/tilefin-nvidia-open/commit/e2131b7d78fcd4cde5979522d49b8dbfdd37faba))
+* **session:** start the session through niri-session so targets activate ([#73](https://github.com/repentsinner/tilefin-nvidia-open/issues/73)) ([4154ad5](https://github.com/repentsinner/tilefin-nvidia-open/commit/4154ad574d64ebd748cc65a65fc4431f79b3d8c9))
+* **setup-user:** apply Wayland Flatpak overrides to the user installation ([#72](https://github.com/repentsinner/tilefin-nvidia-open/issues/72)) ([ec4b48b](https://github.com/repentsinner/tilefin-nvidia-open/commit/ec4b48bfedb2e47f38b0e8d8ba1c7994cb8db7ab))
+* **vm:** run the test VM through virt-install and fail loudly ([#74](https://github.com/repentsinner/tilefin-nvidia-open/issues/74)) ([1c4b161](https://github.com/repentsinner/tilefin-nvidia-open/commit/1c4b161435c02ff02d93a280de639366e3688024))
+
+
+### Features
+
+* **image:** raise the inotify instance cap for rootless podman ([#78](https://github.com/repentsinner/tilefin-nvidia-open/issues/78)) ([5d5626a](https://github.com/repentsinner/tilefin-nvidia-open/commit/5d5626a69659ebbbddf5a0686e0c82a400a7ed91)), closes [#62](https://github.com/repentsinner/tilefin-nvidia-open/issues/62)
+* **image:** ship tailscale and linuxptp in the image ([#75](https://github.com/repentsinner/tilefin-nvidia-open/issues/75)) ([daca071](https://github.com/repentsinner/tilefin-nvidia-open/commit/daca071175409b8311114c670b38135b620dcba9))
+* **install-media:** build an installer ISO ([#70](https://github.com/repentsinner/tilefin-nvidia-open/issues/70)) ([6dab890](https://github.com/repentsinner/tilefin-nvidia-open/commit/6dab8908303ade85a4e307cd35d5c364a57f7158))
+* **niri:** bind close-window to Mod+W with repeat disabled ([#81](https://github.com/repentsinner/tilefin-nvidia-open/issues/81)) ([57d50e3](https://github.com/repentsinner/tilefin-nvidia-open/commit/57d50e3c4bf642e123f7b9c76f1db449df5e24a7))
+* **session:** add hot-development mode between development and production ([#80](https://github.com/repentsinner/tilefin-nvidia-open/issues/80)) ([658c8cf](https://github.com/repentsinner/tilefin-nvidia-open/commit/658c8cf6ab76e4a82620b8073774dee023d86e0c))
+* **setup-user:** prompt for hostname and login shell ([#69](https://github.com/repentsinner/tilefin-nvidia-open/issues/69)) ([0e7514e](https://github.com/repentsinner/tilefin-nvidia-open/commit/0e7514e898d27dbd13e1fa36f1eb858311a750f3))
+
 # Changelog
 
 ## [0.4.13](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.12...v0.4.13) (2026-08-03)
