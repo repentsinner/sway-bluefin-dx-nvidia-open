@@ -113,7 +113,7 @@ binds {
     Mod+L { spawn "sh" "-c" "pidof hyprlock || hyprlock"; }  // Lock screen
 
     // Window management
-    Mod+Q { close-window; }
+    Mod+W repeat=false { close-window; }
     Mod+V { toggle-window-floating; }
 
     // Focus movement
