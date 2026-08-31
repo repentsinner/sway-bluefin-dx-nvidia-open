@@ -1,12 +1,12 @@
 ---
-name: Build container image
+name: CI
 on:
   pull_request:
     branches:
       - main
-    # No paths-ignore here — CI Gate must always report a status.
+    # No paths-ignore here — the quality check must always report a status.
     # The 'changes' job below skips the build for docs-only PRs.
-  # CI Gate is a required status check, so this workflow subscribes to
+  # quality is the required status check, so this workflow subscribes to
   # merge_group as well: a check that does not run inside the queue never
   # reports, and the queue waits on it forever. The 'changes' job is
   # pull_request-only, and build_push's `github.event_name != 'pull_request'`
@@ -240,17 +240,59 @@ jobs:
           COSIGN_EXPERIMENTAL: false
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
 
-  gate:
-    name: CI Gate
-    if: always()
-    needs: [build_push]
+  # Static analysis lives here rather than in its own workflow because
+  # `needs:` cannot cross workflow files, and one required check is better
+  # than two (§spec:quality-gate). It is fast — seconds — and reports
+  # independently of the image build in the checks list.
+  static-analysis:
+    name: Static analysis
     runs-on: ubuntu-latest
     steps:
-      - name: Check build result
+      # Flywheel's own commits skip the suite. A step-level `if:` that
+      # evaluates false still reports `success`, so the aggregate stays
+      # satisfied.
+      - id: classify
+        uses: point-source/flywheel/classify@59758d1940ebe054ce9fdd4b7a7dc79a0cf235e0 # v2.1.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5
+        if: steps.classify.outputs.derived_release_commit != 'true'
+      # build.sh is the image: ~500 lines of shell that nothing else
+      # validates. Pinned images so the tool versions do not drift.
+      - name: shellcheck
+        if: steps.classify.outputs.derived_release_commit != 'true'
         run: |
-          if [[ "${{ needs.build_push.result }}" =~ ^(success|skipped)$ ]]; then
-            echo "Build: ${{ needs.build_push.result }}"
-          else
-            echo "Build failed: ${{ needs.build_push.result }}"
-            exit 1
-          fi
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck:v0.11.0 \
+            --severity=warning build_files/*.sh test/*.sh
+      # An unparseable workflow reports as a zero-job failed run with no
+      # error text, which is how auto-merge-release.yml stayed broken from
+      # its first commit. actionlint names the file, line and column.
+      - name: actionlint
+        if: steps.classify.outputs.derived_release_commit != 'true'
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint:1.7.12 -color
+
+  # The single required status check (§spec:require-aggregate-check). A
+  # required check has to report on every run, and a skipped job reports
+  # nothing — build_push legitimately skips on documentation-only pull
+  # requests — so the ruleset names this aggregate, never the jobs above.
+  quality:
+    name: quality
+    if: always()
+    needs: [build_push, static-analysis]
+    runs-on: ubuntu-latest
+    steps:
+      # Results arrive through env rather than inline expressions so the
+      # script stays quoting-safe and shellcheck-clean.
+      - name: Check results
+        env:
+          BUILD_RESULT: ${{ needs.build_push.result }}
+          STATIC_RESULT: ${{ needs.static-analysis.result }}
+        run: |
+          echo "build_push=$BUILD_RESULT static-analysis=$STATIC_RESULT"
+          for result in "$BUILD_RESULT" "$STATIC_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::job result: $result"; exit 1 ;;
+            esac
+          done

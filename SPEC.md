@@ -717,51 +717,68 @@ Nothing validated `build_files/build.sh` — roughly 500 lines of shell that
 
 ### Design
 
-Four required status checks, named identically across the repositories
+Three required status checks, named identically across the repositories
 maintained alongside this one so one ruleset definition serves all of them.
 The names are the contract; what runs inside each varies by repository.
 
-| Check | Role | Cost |
-| --- | --- | --- |
-| `flywheel/conventional-commit` | commit message hygiene | supplied by flywheel |
-| `governance / lint` | SPEC, ROADMAP and README governance | seconds |
-| `quality` | fast static analysis | seconds |
-| `CI Gate` | aggregate over the artifact build | skips cheaply, gates when it matters |
+| Check | Role |
+| --- | --- |
+| `flywheel/conventional-commit` | commit message hygiene, supplied by flywheel |
+| `governance / lint` | SPEC, ROADMAP and README governance |
+| `quality` | everything else this repository verifies |
 
 A repository with nothing to put in a slot ships the job saying so, rather
 than dropping the check from the ruleset. Removing it trades a visible gap
 for an invisible one, and the entry has to be restored the moment the
 repository grows the capability.
 
-### Require the aggregate, never the build §spec:require-aggregate-check
+### One required check per gating workflow §spec:require-aggregate-check
 
-A required status check shall name a job that reports on every run.
+A required status check shall name a job that reports on every run, and the
+number of required checks shall follow the number of distinct merge
+decisions rather than the number of kinds of work.
 
-`build_push` skips on documentation-only pull requests, and a skipped job
-reports nothing at all — so requiring it directly leaves the check pending
-forever and the pull request unmergeable. `CI Gate` exists for this: it runs
-under `if: always()`, and treats a `skipped` build as a pass and a failed one
-as a failure.
+Two constraints set the shape.
 
-The same trap applies to a check name copied between repositories. A context
-no workflow emits is indistinguishable, from the ruleset's side, from one
-that has not reported yet.
+A skipped job reports nothing at all. `build_push` skips on
+documentation-only pull requests, so requiring it directly would leave the
+check pending forever and the pull request unmergeable. The `quality` job
+exists for this: it runs under `if: always()`, and treats a `skipped`
+dependency as a pass and a failed one as a failure. The same trap catches a
+check name copied between repositories — a context no workflow emits is
+indistinguishable, from the ruleset's side, from one that has not reported
+yet.
+
+`needs:` cannot cross workflow files, so an aggregate covers only its own
+file. That sets the floor: one required check per workflow file that gates
+merges. `governance / lint` is separate because it comes from a reusable
+workflow in its own file, not by choice.
+
+Everything else that gates a merge therefore lives in `build.yml` behind the
+one `quality` aggregate. Adding a job means adding it to that job's `needs`;
+the ruleset does not change.
+
+Splitting a second required check out by *kind* of work — static analysis
+against tests, say — is rejected. Individual job results are visible in the
+checks list whatever the ruleset names, so a second context adds no
+information; it only adds a second thing to keep in sync. A second required
+check earns its place when the *policy* differs, such as an advisory suite
+that should report without blocking.
 
 ### Quality gate contents §spec:quality-gate-contents
 
-`quality` runs `shellcheck` over `build_files/` and `test/`, and `actionlint`
-over `.github/workflows/`. Both run from version-pinned images rather than
-the runner's copies, so the tool version does not drift underneath the gate.
+`quality` aggregates `build_push` and `static-analysis`.
 
-`actionlint` is the direct answer to the failure that motivated this section:
-run against the deleted `auto-merge-release.yml`, it reports
+`static-analysis` runs `shellcheck` over `build_files/` and `test/`, and
+`actionlint` over `.github/workflows/`, from version-pinned images rather
+than the runner's copies so the tool versions do not drift underneath the
+gate. It takes seconds and reports independently of the image build.
+
+`actionlint` is the direct answer to the failure that motivated this
+section: run against the deleted `auto-merge-release.yml`, it reports
 `could not parse as YAML` with the file, line and column. Adopting it also
 found a `concurrency` group referencing `inputs` that `build.yml` never
 declares.
-
-The gate deliberately excludes the image build. That takes around 27 minutes
-and is already gated by `CI Gate`; folding it in would make every
-documentation change wait on it twice.
 
 ## Dual-channel image publishing §spec:image-channels
 
