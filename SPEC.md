@@ -152,7 +152,8 @@ GPU passthrough support:
 - looking-glass-client (low-latency framebuffer, from COPR).
 - virtiofsd (fast file sharing).
 - Polkit rule: wheel group can manage VMs without extra groups.
-- IOMMU kernel args enabled via `bootc kargs.d`.
+- IOMMU kernel args `intel_iommu=on` and `amd_iommu=on` via `bootc
+  kargs.d`. `iommu=pt` is deliberately absent (§spec:iommu-mode).
 
 ## Wayland environment config §spec:wayland-config
 
@@ -991,6 +992,29 @@ incorrectly set a 64-bit mask; a fork was maintained to fix this.
 The AJA card was removed from the system. The 32-bit DMA constraint,
 the forked driver, and the IOMMU workaround are no longer needed.
 
+One finding outlived the card and is recorded here so it is not
+rediscovered. The workaround was removing `iommu=pt` rather than fixing the
+DMA mask alone because the two mapping paths behave differently on failure:
+`dma_direct_map_page` checks `dma_capable()` and falls back to
+`swiotlb_map()` when a device cannot reach an address, while
+`iommu_dma_map_page` — the path `iommu=pt` selects — has no equivalent
+fallback and emits no diagnostic. A restricted-mask device under `pt`
+therefore fails silently instead of bouncing. That is a property of the
+kernel's `iommu-dma` layer, not of the AJA card, and it applies to any
+device with a restricted mask.
+
+### Capture hardware shall use a 64-bit DMA mask §spec:dma-mask-64bit
+
+Capture, network and storage hardware selected for this image shall
+advertise a 64-bit DMA mask. A device needing SWIOTLB bounce buffering for
+addresses above 4 GB is out of scope.
+
+This closes the constraint rather than carrying it forward. The DeckLink
+8K Pro G2 meets it, as does the ConnectX-6 (§spec:rivermax). No part of
+the image works around a restricted DMA mask, and none shall be added:
+the AJA history above is the cost of the alternative — a driver fork, a
+kernel-arg workaround, and a silent failure mode with no diagnostic.
+
 ### Current: Blackmagic DeckLink 8K Pro G2
 
 The replacement capture card is a Blackmagic DeckLink 8K Pro G2
@@ -1184,7 +1208,7 @@ The image contains `/usr/sbin/ptp4l` and `/usr/sbin/phc2sys`, with
 
 ## NVIDIA DRM modesetting §spec:nvidia-drm-modeset
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
@@ -1206,25 +1230,45 @@ a display standby setting instead (§spec:display-deep-sleep).
 
 ### Design
 
-A `bootc kargs.d` file (`30-nvidia-drm.toml`) adds
-`nvidia-drm.modeset=1` to kernel arguments, following the same pattern
-as `10-iommu.toml` and `20-verbose-boot.toml`.
+`30-nvidia-drm.toml` carried `nvidia-drm.modeset=1` from 2026 until
+2026-08-31, when it was removed. Three findings retired it:
 
-The base image already ships `NVreg_PreserveVideoMemoryAllocations=1`
-in `/usr/lib/modprobe.d/nvidia.conf` — no additional modprobe
-configuration is needed.
+- **The driver already defaults it on.** NVIDIA enables modesetting by
+  default from the 560 series, and this image ships 610. Setting it
+  restates a default.
+- **The symptom it was adopted against was a display setting.**
+  §spec:display-deep-sleep traced the Electron losses to the LG panel's
+  Deep Sleep Mode. No capture ever isolated the karg.
+- **It is irrelevant to the passthrough target.** Where an Intel iGPU
+  drives the display and the NVIDIA GPU is handed to a guest, the GPU
+  binds to `vfio-pci` and the NVIDIA DRM driver never drives an output
+  (§spec:gpu-detection, §spec:virtualization).
 
-### DRM modesetting kernel arg §spec:drm-modeset-karg
+The base image ships `NVreg_PreserveVideoMemoryAllocations=1` in
+`/usr/lib/modprobe.d/nvidia.conf`, so suspend and resume keep their
+framebuffer handling without configuration from this image.
 
-`/usr/lib/bootc/kargs.d/30-nvidia-drm.toml` sets
-`nvidia-drm.modeset=1`. The arg appears in `/proc/cmdline` after reboot.
+### DRM modesetting is left to the driver §spec:drm-modeset-karg
+
+This image shall not set `nvidia-drm.modeset`.
+
+Confirm the driver's own value with
+`sudo cat /sys/module/nvidia_drm/parameters/modeset`. The file is
+root-readable only, which is why the removal rests on NVIDIA's
+documented default rather than on a reading from this host; `Y` is the
+expected value on 560 and later.
+
+Restore the karg only against a capture showing modesetting off on
+hardware this image targets. The reported failing case is a hybrid
+laptop whose NVIDIA GPU drives no output — which is also the case where
+modesetting changes nothing.
 
 ### Display deep sleep and wake disconnects §spec:display-deep-sleep
 
 Bench captures on molecule, 2026-04-10 to 2026-04-15, connector
 `card1-DP-4`, kernel 6.19.10 and 6.19.11-100.fc42, driver 595.58.03,
 sampling connector `status` and `dpms` at 2 Hz across idle display-off
-and wake. §spec:drm-modeset-karg was already deployed, and `dmesg`
+and wake. The modeset karg was deployed at the time, and `dmesg`
 reports `fbcon: nvidia-drmdrmfb (fb0) is primary device`, which the
 driver reaches only under modesetting — so these record behavior with
 DRM modesetting active.
@@ -1267,14 +1311,15 @@ Turning it off is an operator step at display bring-up, not image
 configuration: the setting lives in the monitor's own non-volatile
 storage and no host-side change reaches it.
 
-### Open questions
+### Resolved questions
 
-- Does §spec:drm-modeset-karg resolve anything on its own? It was
-  adopted against a symptom that has since traced to a display
-  setting, and no capture isolates the karg.
-- The capture baseline records kernel and driver version but not
-  `/proc/cmdline`, so karg state above is inferred from `dmesg` rather
-  than recorded. A repeat should capture it directly.
+- **Does the karg resolve anything on its own?** No evidence that it
+  does. It was adopted against a symptom that traced to a display
+  setting, no capture isolated it, and the driver defaults it on
+  regardless. Removed on that basis rather than on a disproof.
+- **Capture hygiene.** The 2026-04 baseline records kernel and driver
+  version but not `/proc/cmdline`, so its karg state is inferred from
+  `dmesg`. A repeat shall record the command line directly.
 
 ## Manual system suspend §spec:manual-suspend
 
@@ -1353,7 +1398,7 @@ comes back the way I left it." Auto-staging inverts that: every reboot
 is a potential image transition, with kernel modules, NVIDIA driver, and
 capture-card kmod versions changing under the user's feet. The staged
 image is unvalidated against the workload — a regression in
-`kmod-nvidia`, the AJA out-of-tree driver, or peermem header coupling
+`kmod-nvidia`, the DeckLink out-of-tree driver, or peermem header coupling
 (§spec:decklink-capture, §spec:rivermax) only surfaces post-reboot,
 often mid-show.
 
@@ -1758,11 +1803,20 @@ findings drove the reversal:
   `XferType: GPUD`. The acceptance test did not catch that, because it
   tested for the `p2pmem/` directory, and the directory exists with an
   empty pool.
-- **The consumer needs a path this cannot deliver.** backlit_molecule
-  streams content from Weka or Lustre, and `p2pdma` covers NVMe block
-  devices alone. That workload is §road:gpudirect-storage and needs
-  `nvidia-fs.ko`. What shipped here served a local-NVMe approximation of
-  the real target, not the target.
+- **Nothing consumes it yet.** backlit_molecule reads through KvikIO,
+  whose `KVIKIO_COMPAT_MODE` presents one API over cuFile and POSIX and
+  falls back where GDS is absent, so a dev host without it works
+  unchanged. Its own benchmark records that direct and bounced reads
+  complete in the same time on this host, because NVMe latency swamps
+  both — the win here is host CPU and RAM, not latency.
+
+  This bullet previously claimed the consumer needed only Weka or Lustre,
+  which `p2pdma` cannot serve. That was half right. The headline
+  architecture does target a distributed filesystem
+  (§road:gpudirect-storage, which needs `nvidia-fs.ko`), but
+  backlit_molecule also carries a *local* NVMe item — reading EXR regions
+  straight into device memory — that `p2pdma` serves exactly. Restoring
+  this section is the first step when that work starts.
 - **It is not free.** `RmForceDisableIomapWC=1` maps BAR1 uncached, which
   slows every CPU-side write through the aperture, and `RMForceStaticBar1`
   pins the whole 48 GiB framebuffer into the aperture across suspend and
@@ -1948,29 +2002,47 @@ a different failure from the driver declining to register.
 
 ### IOMMU mode §spec:iommu-mode
 
-GDS peer-to-peer DMA requires the NVMe device to reach the GPU's BAR.
-Under a *translating* IOMMU that path is unreliable, which is the basis
-for NVIDIA's `iommu=off` guidance — a functional constraint, not a
-throughput one. Modern IOMMUs are close to free: `iommu=pt` runs an
-identity-mapped domain for host-driven devices, and Linux defaults to
-lazy IOTLB invalidation for those that are translated.
+**The image does not set `iommu=pt`.** It sets `intel_iommu=on` and
+`amd_iommu=on` and nothing more (§spec:virtualization).
 
-The image already sets `iommu=pt` (§spec:decklink-capture), and
-`gdscheck -p` reports the GPU as "supports GDS" under it. That is the
-starting position, not a proven one: the same output warns "GDS is not
-guaranteed to work functionally or in a performant way with
-iommu=on/pt", and NVIDIA's tool does not distinguish `pt` from `on`
-there. Whether `pt` suffices in practice is an open question below.
+`iommu=pt` was carried for GDS: peer-to-peer DMA needs the NVMe device to
+reach the GPU's BAR, and under a *translating* IOMMU that path is
+unreliable — the basis for NVIDIA's `iommu=off` guidance, a functional
+constraint rather than a throughput one. GDS is no longer delivered
+(§spec:gpudirect-storage), which leaves the arg with no requirement behind
+it.
 
-Rebasing onto a current image is not sufficient to get `iommu=pt` on a
-machine that once had it removed. `kargs.d` is applied as a diff against
-the previous image, and a local deletion outranks it: molecule booted
-`intel_iommu=on amd_iommu=on` from `10-iommu.toml` with `iommu=pt` from the
-same file absent, because it was deleted locally when the AJA Corvid44
-needed the SWIOTLB bounce path (§spec:decklink-capture). Repairing that
-took a one-time `rpm-ostree kargs --append=iommu=pt`; no image change
-reaches it. The arg is present again as of 2026-08-31 — see
-§spec:karg-drift.
+Three things decided the removal rather than a rewrite of the rationale:
+
+- **It is not a passthrough prerequisite.** `intel_iommu=on` or
+  `amd_iommu=on` alone is the minimum for VFIO to hand a device to a
+  guest. `iommu=pt` is a host-side performance preference layered on top.
+- **It costs the protection the IOMMU exists to provide.** Under `pt`,
+  host-owned devices DMA to physical addresses through an identity
+  domain. On a machine carrying a capture card, a 100G NIC and
+  Thunderbolt, that is a real reduction in isolation.
+- **The performance case is unmeasured, here and upstream.** A March 2026
+  patch proposing that the AMD IOMMU default to passthrough "for improved
+  performance" was rejected by the IOMMU maintainer, who noted that lazy
+  translated mode preserves most of the security benefit — and no
+  quantified AMD figures were produced in that thread. An earlier revision
+  of this section asserted that modern IOMMUs are "close to free"; that
+  claim had no measurement behind it and has been withdrawn.
+
+The cost of removal is likewise unmeasured. Translated DMA applies to the
+ConnectX-6 and the DeckLink, and this repository has no before-and-after
+figures for either. Restoring `iommu=pt` is a one-line change to
+`10-iommu.toml` and is the correct response to a measured regression in
+§spec:rivermax or §spec:decklink-capture throughput — not to a suspicion
+of one.
+
+A local karg outranks the image in both directions, which this arg
+demonstrated twice. It was deleted locally when the AJA Corvid44 needed the
+SWIOTLB bounce path (§spec:decklink-capture), and no rebase restored it —
+that took a one-time `rpm-ostree kargs --append=iommu=pt`. That local append
+now outranks the image in the other direction: dropping the arg from
+`10-iommu.toml` does not remove it from a host where it was added by hand.
+Removing it there is an operator step (§spec:karg-drift).
 
 ### Local kernel argument drift §spec:karg-drift
 
@@ -1988,18 +2060,24 @@ nvidia.NVreg_RestrictProfilingToAdminUsers=0
 iommu=pt iomem=relaxed
 ```
 
-Two entries are local state rather than image state:
+Two entries are local state rather than image state, and both shall be
+deleted:
 
-- `iommu=pt` — repaired by hand after the deletion described above. It
-  belongs to `10-iommu.toml` and reads correctly, so nothing follows from
-  it. It is listed because its position after the NVIDIA parameters,
-  rather than beside `amd_iommu=on`, is the only evidence that it arrived
-  locally.
+- `iommu=pt` — appended by hand to repair the AJA-era deletion described
+  in §spec:iommu-mode. The image has since stopped setting it deliberately,
+  but a local append outranks the image, so dropping it from
+  `10-iommu.toml` does not remove it here. Delete with
+  `rpm-ostree kargs --delete=iommu=pt`. Its position after the NVIDIA
+  parameters, rather than beside `amd_iommu=on`, is what marks it local.
 - `iomem=relaxed` — no file in this repository sets it and no section asks
   for it. It relaxes the kernel's restriction on `/dev/mem` access to
   reserved regions: a standing weakening of memory protection, adopted for
-  some one-off PCIe or GPU inspection and never removed. It shall be
-  deleted with `rpm-ostree kargs --delete=iomem=relaxed`.
+  some one-off PCIe or GPU inspection and never removed. Delete with
+  `rpm-ostree kargs --delete=iomem=relaxed`.
+
+`nvidia-drm.modeset=1` and `nvidia.NVreg_EnableResizableBar=1` need no
+action. Both came from this image's own `kargs.d`, so removing them there
+removes them on the next upgrade.
 
 `rhgb` and `quiet` also survive from the base image, against the intent of
 `20-verbose-boot.toml`; `build.sh` documents
