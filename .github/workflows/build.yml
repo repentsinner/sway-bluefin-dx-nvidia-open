@@ -49,6 +49,11 @@ jobs:
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
         id: filter
         with:
+          # 'every' requires each changed file to match ALL patterns. Without
+          # it the default 'some' applies, '**' matches everything, and the
+          # negations below are ignored — so the skip never fires and every
+          # docs-only PR pays a full image build (~27 min on PR #79).
+          predicate-quantifier: 'every'
           filters: |
             build:
               - '**'

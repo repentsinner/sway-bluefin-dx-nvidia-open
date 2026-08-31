@@ -473,9 +473,14 @@ EOF
 # This sets kernel args that will be applied on next boot after image switch
 mkdir -p /usr/lib/bootc/kargs.d
 cat > /usr/lib/bootc/kargs.d/10-iommu.toml <<'EOF'
-# Enable IOMMU for VFIO GPU passthrough
-# These are safe on systems without passthrough - just enables the capability
-kargs = ["intel_iommu=on", "amd_iommu=on", "iommu=pt"]
+# Enable the IOMMU so VFIO can hand a GPU to a guest (§spec:virtualization).
+# These two are the whole requirement for passthrough and are harmless on a
+# host that never passes anything through.
+#
+# iommu=pt is deliberately absent (§spec:iommu-mode). It is a host-side
+# performance preference, not a passthrough prerequisite, and it costs the
+# IOMMU protection that is the reason to turn the thing on.
+kargs = ["intel_iommu=on", "amd_iommu=on"]
 EOF
 
 # Enable verbose boot (show kernel and systemd messages instead of splash)
@@ -487,13 +492,6 @@ cat > /usr/lib/bootc/kargs.d/20-verbose-boot.toml <<'EOF'
 kargs = ["systemd.show_status=1"]
 EOF
 
-# Enable NVIDIA DRM kernel modesetting (required for proper display
-# power management — without this, display DPMS cycling corrupts GPU
-# contexts and crashes Electron apps on resume)
-cat > /usr/lib/bootc/kargs.d/30-nvidia-drm.toml <<'EOF'
-kargs = ["nvidia-drm.modeset=1"]
-EOF
-
 # NVIDIA module parameters — kernel args, deliberately not modprobe.d.
 #
 # nvidia.ko loads from the initramfs, seconds before switch-root. That
@@ -501,25 +499,21 @@ EOF
 # /usr/lib/modprobe.d and nothing this script writes afterwards: options
 # placed in /etc/modprobe.d read back as their defaults on the running
 # system (verify with /proc/driver/nvidia/params). Kernel command line
-# parameters bind at module load regardless of when the module is loaded,
-# which is why nvidia-drm.modeset above is a karg too. Regenerating the
-# initramfs in this layer would also work, but kargs are cheaper and are
-# already the established pattern here.
+# parameters bind at module load regardless of when the module is loaded.
+# Regenerating the initramfs in this layer would also work, but kargs are
+# cheaper and are already the established pattern here.
 #
-# NVreg_EnableResizableBar: driver-side opt-in to size BAR1 to full VRAM.
-#   UEFI must also have "Above 4G Decoding" and "Resizable BAR" enabled.
-#   Where firmware already sizes BAR1 to full VRAM this changes nothing;
-#   it makes the driver's own request explicit rather than relying on it.
+# One parameter remains. nvidia-drm.modeset was dropped — the driver has
+# defaulted it on since 560 and this image ships 610 (§spec:nvidia-drm-modeset)
+# — and NVreg_EnableResizableBar with it, a no-op wherever firmware already
+# sizes BAR1 to full VRAM (§spec:static-bar1-p2pdma).
 #
 # NVreg_RestrictProfilingToAdminUsers=0: non-root access to GPU
 #   performance counters for Nsight Compute/Systems and CUPTI, which
 #   otherwise fail with ERR_NVGPUCTRPERM. Confirm with
 #   RmProfilingAdminOnly in /proc/driver/nvidia/params.
 cat > /usr/lib/bootc/kargs.d/40-nvidia-params.toml <<'EOF'
-kargs = [
-  "nvidia.NVreg_EnableResizableBar=1",
-  "nvidia.NVreg_RestrictProfilingToAdminUsers=0"
-]
+kargs = ["nvidia.NVreg_RestrictProfilingToAdminUsers=0"]
 EOF
 
 ###############################################################################
