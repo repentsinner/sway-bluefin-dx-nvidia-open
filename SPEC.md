@@ -1731,7 +1731,7 @@ its token to plaintext `hosts.yml`.
 
 ## GPUDirect Storage §spec:gpudirect-storage
 
-*Status: complete*
+*Status: not started*
 
 ### Problem
 
@@ -1744,6 +1744,40 @@ The image carries five NVIDIA modules from ublue's `kmod-nvidia`:
 `nvidia`, `nvidia-drm`, `nvidia-modeset`, `nvidia-uvm`, and
 `nvidia-peermem`. The last is GPUDirect RDMA for the network path
 (§spec:rivermax), not storage. There is no `nvidia-fs`.
+
+### Backed out
+
+This configuration shipped and was verified on 2026-08-03, and was removed
+on 2026-08-31. §spec:static-bar1-p2pdma is retained below as the record of
+what it did and why, not as a description of the running image. Three
+findings drove the reversal:
+
+- **It had already stopped working.** On driver 610.57.04 the pool reads
+  empty — `p2pmem/size`, `p2pmem/available` and `p2pmem/published` are all
+  `0` — where 610.43.03 gave a populated pool and `gdsio` reporting
+  `XferType: GPUD`. The acceptance test did not catch that, because it
+  tested for the `p2pmem/` directory, and the directory exists with an
+  empty pool.
+- **The consumer needs a path this cannot deliver.** backlit_molecule
+  streams content from Weka or Lustre, and `p2pdma` covers NVMe block
+  devices alone. That workload is §road:gpudirect-storage and needs
+  `nvidia-fs.ko`. What shipped here served a local-NVMe approximation of
+  the real target, not the target.
+- **It is not free.** `RmForceDisableIomapWC=1` maps BAR1 uncached, which
+  slows every CPU-side write through the aperture, and `RMForceStaticBar1`
+  pins the whole 48 GiB framebuffer into the aperture across suspend and
+  resume — standing cost and standing surface for a path nothing currently
+  uses.
+
+The image now leaves BAR1 at the driver's own defaults: resizable, sized to
+full VRAM by firmware, write-combined, and mapped through a sliding window.
+`NVreg_EnableResizableBar=1` is kept, being idiomatic, free, and
+independent of static BAR1.
+
+Restoring the feature means re-adding one `modprobe.d` file and the
+initramfs regeneration that carries it (§spec:nvidia-params-as-kargs).
+Reopen this section with §road:gpudirect-storage, and repair the acceptance
+test before trusting either.
 
 ### Design
 
@@ -1847,13 +1881,17 @@ planned around.
 
 ### Static BAR1 for PCI P2PDMA §spec:static-bar1-p2pdma
 
+**Not applied.** This subsection records a configuration the image shipped
+between 2026-08-03 and 2026-08-31 and no longer carries (see Backed out).
+It is kept because the reasoning is expensive to rediscover, and reinstating
+it is the first step whenever §road:gpudirect-storage resumes.
+
 The kernel's P2PDMA allocator hands NVMe the GPU's BAR1 addresses
 directly, which requires the framebuffer to be statically mapped into
-BAR1 rather than mapped through a sliding window.
-`/usr/lib/bootc/kargs.d/40-nvidia-params.toml` sets
-`nvidia.NVreg_RegistryDwords=RMForceStaticBar1=2`
-(§spec:nvidia-params-as-kargs explains why this is a kernel arg rather
-than a `modprobe.d` option).
+BAR1 rather than mapped through a sliding window. That took
+`NVreg_RegistryDwords=RMForceStaticBar1=2`, delivered through
+`/usr/lib/modprobe.d/nvidia-tilefin.conf` rather than a kernel arg
+(§spec:nvidia-params-as-kargs explains why).
 
 The value is `2` (AUTO), not `1` (ENABLE). Per `nvrm_registry.h`, AUTO
 "will only map static BAR1 if static BAR1 size is calculated to be big
@@ -1926,12 +1964,51 @@ there. Whether `pt` suffices in practice is an open question below.
 
 Rebasing onto a current image is not sufficient to get `iommu=pt` on a
 machine that once had it removed. `kargs.d` is applied as a diff against
-the previous image, and a local deletion outranks it: this machine boots
-`intel_iommu=on amd_iommu=on` from `10-iommu.toml` while `iommu=pt` from
-the same file is absent, because it was deleted locally when the AJA
-Corvid44 needed the SWIOTLB bounce path (§spec:decklink-capture).
-Restoring it takes a one-time `rpm-ostree kargs --append=iommu=pt`; no
-image change will do it.
+the previous image, and a local deletion outranks it: molecule booted
+`intel_iommu=on amd_iommu=on` from `10-iommu.toml` with `iommu=pt` from the
+same file absent, because it was deleted locally when the AJA Corvid44
+needed the SWIOTLB bounce path (§spec:decklink-capture). Repairing that
+took a one-time `rpm-ostree kargs --append=iommu=pt`; no image change
+reaches it. The arg is present again as of 2026-08-31 — see
+§spec:karg-drift.
+
+### Local kernel argument drift §spec:karg-drift
+
+`kargs.d` adds arguments and cannot delete them, and a local append or
+delete outranks the image in either direction. The running command line is
+therefore not a description of the image, and the two drift apart silently.
+
+`rpm-ostree kargs` on molecule, 2026-08-31:
+
+```text
+rhgb quiet root=… rootflags=subvol=root rw ostree=…
+intel_iommu=on amd_iommu=on systemd.show_status=1 nvidia-drm.modeset=1
+nvidia.NVreg_EnableResizableBar=1
+nvidia.NVreg_RestrictProfilingToAdminUsers=0
+iommu=pt iomem=relaxed
+```
+
+Two entries are local state rather than image state:
+
+- `iommu=pt` — repaired by hand after the deletion described above. It
+  belongs to `10-iommu.toml` and reads correctly, so nothing follows from
+  it. It is listed because its position after the NVIDIA parameters,
+  rather than beside `amd_iommu=on`, is the only evidence that it arrived
+  locally.
+- `iomem=relaxed` — no file in this repository sets it and no section asks
+  for it. It relaxes the kernel's restriction on `/dev/mem` access to
+  reserved regions: a standing weakening of memory protection, adopted for
+  some one-off PCIe or GPU inspection and never removed. It shall be
+  deleted with `rpm-ostree kargs --delete=iomem=relaxed`.
+
+`rhgb` and `quiet` also survive from the base image, against the intent of
+`20-verbose-boot.toml`; `build.sh` documents
+`rpm-ostree kargs --delete=quiet --delete=rhgb` as a first-boot step that
+was never run. Harmless, and recorded so the comparison is complete.
+
+Compare `rpm-ostree kargs` against `build_files/build.sh` after any
+incident that prompts a configuration change, and treat an unexplained
+argument as drift rather than as intent.
 
 ### NVIDIA module parameters are kernel args §spec:nvidia-params-as-kargs
 
@@ -1947,19 +2024,18 @@ from the base image's `/usr/lib/modprobe.d/nvidia.conf`
 `TemporaryFilePath`) all apply, while every option this image added under
 `/etc/modprobe.d/` reads back as its default.
 
-Two deliveries are therefore in play. Parameters whose values contain no
-`;` ship as kargs in `/usr/lib/bootc/kargs.d/40-nvidia-params.toml`,
-matching the existing `nvidia-drm.modeset=1`; kernel command line
-parameters bind at module load regardless of where the module came from.
-`NVreg_RegistryDwords` cannot use that route (§spec:static-bar1-p2pdma),
-so the image regenerates its initramfs — invocation mirroring
-`ublue-os/main build_files/initramfs.sh` — and ships that parameter in
-`/usr/lib/modprobe.d/nvidia-tilefin.conf`.
+Every parameter this image sets therefore ships as a karg in
+`/usr/lib/bootc/kargs.d/40-nvidia-params.toml`, matching the existing
+`nvidia-drm.modeset=1`; kernel command line parameters bind at module load
+regardless of where the module came from.
 
-The build asserts the result with
-`lsinitrd … | grep -q nvidia-tilefin.conf`. Every delivery failure in
-this section's history was invisible until a reboot; this one fails the
-build instead.
+A parameter whose value contains `;` cannot use that route
+(§spec:static-bar1-p2pdma). Delivering one takes `/usr/lib/modprobe.d/`,
+which puts no bootloader in the path, plus an initramfs regeneration in
+this layer so the file is read at all, plus an `lsinitrd` assertion so a
+delivery failure fails the build rather than surfacing after a reboot. The
+image carried all three for `RMForceStaticBar1` and dropped them with it,
+so no parameter needs that route today and the build runs no dracut.
 
 This subsumes the profiling option added for Nsight/CUPTI, which was
 inert for the same reason — `RmProfilingAdminOnly` read back as `1`
@@ -1970,12 +2046,15 @@ silently ineffective. Check `/proc/driver/nvidia/params`, not the file.
 
 ### Verification
 
-Confirmed working on 2026-08-03, kernel 7.1.5-101, driver 610.43.03.
+Historical. Confirmed working on 2026-08-03, kernel 7.1.5-101, driver
+610.43.03, and not reproducible on kernel 7.1.10-200 with driver 610.57.04,
+where the pool reads empty. The image no longer ships the configuration
+(see Backed out); what follows records the state at the point it worked.
 
 The driver registered BAR1 with the kernel P2PDMA layer —
-`/sys/bus/pci/devices/0000:41:00.0/p2pmem/` exists, which can only
-happen past both gates in `uvm_devmem.c`, so AUTO did engage static
-BAR1 and write-combine is off. `/proc/driver/nvidia/params` reads
+`/sys/bus/pci/devices/0000:41:00.0/p2pmem/` existed *and the pool was
+populated*, so AUTO did engage static BAR1 and write-combine was off.
+`/proc/driver/nvidia/params` read
 `RegistryDwords: "RMForceStaticBar1=2;RmForceDisableIomapWC=1"`,
 `EnableResizableBar: 1`, `RmProfilingAdminOnly: 0`.
 
@@ -1999,6 +2078,14 @@ directory and `gdsio` reporting `XferType: GPUD`.
 `gdscheck` remains useful for the GPU and platform rows, and its
 `iommu=on/pt` warning is worth reading — but that warning did not
 predict failure here.
+
+The `p2pmem/` directory alone is too weak a signal, and this section
+originally treated it as sufficient. The directory is created with the
+sysfs group and survives a pool that holds nothing: on driver 610.57.04 it
+is present while `p2pmem/size`, `p2pmem/available` and `p2pmem/published`
+all read `0`. A restored configuration shall be accepted on `p2pmem/size`
+greater than zero *and* `gdsio` reporting `XferType: GPUD`, never on the
+directory.
 
 #### The storage device is the bottleneck, not the topology
 
@@ -2203,6 +2290,88 @@ under `/usr/lib/sysctl.d/` or `/etc/sysctl.d/` sets the key, so the
 drop-in applies uncontested at boot. Watches
 (`fs.inotify.max_user_watches`) are left to the kernel, which scales
 them with system memory well above the 524288 `kind` asks for.
+
+## Crash capture §spec:crash-capture
+
+*Status: in progress*
+
+### Problem
+
+molecule froze hard on 2026-08-31 at 00:07:43 and left no evidence. The
+journal stops mid-second: no panic, no oops, no OOM kill, no NVIDIA `Xid`,
+no MCE, no fatal PCIe AER, no shutdown. The freeze came 81 seconds after an
+S3 resume and 71 seconds after Discord — an Electron client, so the first
+substantial GPU consumer of that session — started. The last two `phc2sys`
+samples show the system clock losing 5.2 ms against both NIC hardware
+clocks, a common-mode error that means the machine was already stalling a
+second before it went silent. Boots -7 through -2 all ended in clean
+shutdowns, so this is not the machine's habit.
+
+None of that is diagnosable after the fact, and the reason is configuration
+rather than bad luck. The capture chain is already complete: `pstore`
+registers the firmware-backed ERST backend, `/sys/fs/pstore` is mounted,
+and the base image enables `systemd-pstore.service`, which copies any
+record into `/var/lib/systemd/pstore` on the next boot. What was missing is
+anything that converts a hang into a panic for pstore to capture.
+`kernel.panic_on_oops`, `kernel.hardlockup_panic` and
+`kernel.softlockup_panic` all read `0`, and `kernel.sysrq` read `16` —
+emergency sync alone, so the keyboard offered no way to dump task state or
+to bring the machine down cleanly. `/var/lib/systemd/pstore` does not
+exist, which is consistent: nothing has ever panicked here.
+
+### Design
+
+`/usr/lib/sysctl.d/91-crash-capture.conf` closes that gap, sitting
+alongside `90-inotify.conf` (§spec:inotify-instance-cap). No kernel arg and
+no new service is involved; the backend and the collector are already
+present and only the policy sysctls were absent.
+
+### Crash capture sysctls §spec:crash-capture-sysctls
+
+| Setting | Value | Default | Reason |
+| --- | --- | --- | --- |
+| `kernel.sysrq` | `1` | `16` | All SysRq functions. `Alt+SysRq+w` dumps blocked tasks and `Alt+SysRq+l` backtraces every CPU into the log while the machine is still wedged; REISUB brings down one that is past saving. |
+| `kernel.hardlockup_panic` | `1` | `0` | A CPU that stopped answering the NMI watchdog is already fatal. Panicking records why. |
+| `kernel.panic_on_oops` | `1` | `0` | An oops leaves the kernel undefined. Panic while the trace can still be written. |
+| `kernel.panic` | `20` | `0` | Reboot 20 s after a panic. `0` leaves the machine dead at the panic screen, and pstore holds the trace either way. |
+
+`kernel.softlockup_panic` stays at `0`. A soft lockup is 20 s in the kernel
+without scheduling, which heavy DMA from the DeckLink
+(§spec:decklink-capture) or the ConnectX-6 can reach on a machine that is
+not wedged, so enabling it trades a silent freeze for spurious reboots. It
+should be raised for the duration of a bisect and lowered afterwards.
+
+### Verification
+
+Read the values back after a reboot onto the image:
+
+```console
+$ sysctl kernel.sysrq kernel.panic kernel.panic_on_oops kernel.hardlockup_panic
+kernel.sysrq = 1
+kernel.panic = 20
+kernel.panic_on_oops = 1
+kernel.hardlockup_panic = 1
+```
+
+Whether ERST records a panic on this board is untested — no panic has
+occurred since the backend was noticed. `echo c > /proc/sysrq-trigger`
+forces one and is the only way to test it, at the cost of a deliberate
+crash. Run it on an idle machine, then check `/var/lib/systemd/pstore` on
+the next boot.
+
+### Open questions
+
+- Does the 2026-08-31 freeze recur, and what caused it? It is
+  unattributed. The S3 resume path, the 610.57.04 driver and 7.1.10-200
+  kernel that landed together on 2026-08-28, and the first GPU client
+  after resume are all candidates, and no evidence separates them.
+  §spec:display-deep-sleep records a related but distinct failure —
+  display DPMS cycling killing Electron clients, traced to the monitor
+  rather than the GPU. That one lost applications; this one lost the
+  machine.
+- Is the same day's driver segfault related? `bm_workbench` took SIGSEGV
+  inside `libnvidia-eglcore.so.610.57.04` at 13:00 on 2026-08-30, eleven
+  hours earlier. Same driver, same GPU stack, no established link.
 
 ## Out of scope §spec:out-of-scope
 

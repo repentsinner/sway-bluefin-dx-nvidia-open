@@ -168,10 +168,11 @@ unsupportable and install media is the only path.
 
 Build and ship `nvidia-fs.ko` so the `nvfs` path is available for
 distributed filesystems — Lustre, WekaFS, EXAScaler, GPFS, NFS over
-RDMA. The delivered §spec:gpudirect-storage configuration cannot reach
-them: `p2pdma` covers NVMe block devices only, and NVIDIA scopes the
-no-module exemption to "mounts of NVMe (local or with NVIDIA DOCA
-SNAP)". No amount of tuning the shipped setup substitutes.
+RDMA. The `p2pdma` path §spec:gpudirect-storage once shipped cannot reach
+them: it covers NVMe block devices only, and NVIDIA scopes the no-module
+exemption to "mounts of NVMe (local or with NVIDIA DOCA SNAP)". No amount
+of tuning that setup substitutes, which is part of why it was backed out
+on 2026-08-31 rather than maintained against a workload it cannot serve.
 
 Blocked — no such workload yet. The build recipe (one driver header,
 symbol CRCs from the shipped `nvidia.ko`, `kernel-devel` from
