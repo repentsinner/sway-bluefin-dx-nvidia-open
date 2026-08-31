@@ -19,7 +19,7 @@ on:
       - '.github/**'
       - 'disk_config/**'
       - 'cosign.*'
-      - 'release-please-config.json'
+      - '.flywheel.yml'
       - 'version.txt'
       - 'artifacthub-repo.yml'
   workflow_dispatch:
@@ -62,7 +62,7 @@ jobs:
               - '!.github/**'
               - '!disk_config/**'
               - '!cosign.*'
-              - '!release-please-config.json'
+              - '!.flywheel.yml'
               - '!version.txt'
               - '!artifacthub-repo.yml'
 

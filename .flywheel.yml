@@ -1,0 +1,34 @@
+# Flywheel release configuration (§spec:releases).
+#
+# `release: production` cuts a release on every push to the managed branch.
+# `auto_merge` lists the conventional-commit types that merge without review;
+# every other type gates on a human. `!`-suffixed types are separate entries,
+# so `fix` does not imply `fix!`.
+#
+# This image boots a workstation: a bad release is a machine that does not
+# come up. So every type that bumps a version — feat, fix, perf, and any
+# breaking variant — routes to human review, which is stricter than a library
+# project needs. Non-bumping types auto-merge once required checks pass.
+#
+# `chore` covers dependency bumps, so listing it means Dependabot updates can
+# land unreviewed. Flywheel gates that separately: those PRs auto-merge only
+# once the App private key is also registered in the Dependabot secret store.
+# Withhold that registration, or drop `chore`, to keep the review gate.
+flywheel:
+  streams:
+    - name: main-line
+      branches:
+        - name: main
+          release: production
+          auto_merge: [chore, docs, style, test, ci, build, refactor]
+
+  release_files:
+    # version.txt is this image's semver. release-please owned it under the
+    # `simple` release type; flywheel keeps it current for the same readers.
+    # It is not dead weight left over from that tooling — §spec:image-channels
+    # sources the image tags and the OCI version label from it
+    # (§spec:daily-tag-provenance, §spec:oci-version-label), and that work is
+    # specified but not yet built. Deleting the file would break it silently.
+    - path: version.txt
+      pattern: '^[0-9]+\.[0-9]+\.[0-9]+'
+      replacement: '${version}'
