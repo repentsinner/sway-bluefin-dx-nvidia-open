@@ -100,6 +100,23 @@ FONTS=(
 )
 
 #------------------------------------------------------------------------------
+# Shell tooling
+#------------------------------------------------------------------------------
+# Binaries behind the aliases and hooks in tool-aliases.{sh,fish}
+# (§spec:tool-aliases). The configuration ships in this image, so the binaries
+# do too — see §spec:image-ships-shell-tools.
+
+SHELL_TOOLS=(
+    bat                       # cat replacement (aliased)
+    eza                       # ls replacement (aliased)
+    zoxide                    # cd replacement (shell hook)
+    direnv                    # per-directory environment (shell hook)
+    starship                  # prompt (shell hook, from COPR)
+    rbw                       # Bitwarden vault client, called from .envrc
+    pinentry                  # rbw password prompt; named because weak deps are off
+)
+
+#------------------------------------------------------------------------------
 # Virtualization (Windows VM + Looking Glass support)
 #------------------------------------------------------------------------------
 
@@ -124,6 +141,7 @@ COPR_REPOS=(
     craftidore/wayblueorg-hyprland  # hyprlock, hypridle (used with Niri too)
     leloubil/wl-clip-persist
     pgaskin/looking-glass-client
+    atim/starship                   # starship is not packaged in Fedora proper
 )
 
 ###############################################################################
@@ -167,6 +185,8 @@ ALL_PACKAGES=(
     "${SYSTEM_UTILS[@]}"
     "${SYSTEM_THEMING[@]}"
     "${FONTS[@]}"
+    # Shell tooling
+    "${SHELL_TOOLS[@]}"
     # Virtualization
     "${VIRTUALIZATION[@]}"
 )
