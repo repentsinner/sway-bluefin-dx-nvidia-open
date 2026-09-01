@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.5.0...v0.6.0) (2026-09-01)
+
+
+### Features
+
+* ship shell-integration tools in the image ([#88](https://github.com/repentsinner/tilefin-nvidia-open/issues/88)) ([7a7979b](https://github.com/repentsinner/tilefin-nvidia-open/commit/7a7979b5a1977ca76b794288b33ef230118fd957))
+
 # [0.5.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.4.13...v0.5.0) (2026-08-31)
 
 
