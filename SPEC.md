@@ -56,7 +56,7 @@ elsewhere:
 
 | Delivery | For |
 | --- | --- |
-| **Userbox** (distrobox, pre-built OCI) | CLI tools, shell utilities, dev toolchains |
+| **Userbox** (distrobox, pre-built OCI) | Dev toolchains and distro packages |
 | **Flatpak** | Sandboxed GUI apps |
 | **Native installer** (`~/.local/bin`) | Self-updating vendor CLIs (e.g., Claude Code) |
 
@@ -308,10 +308,11 @@ worth naming: an entry that admits niri and is also listed
 
 `/etc/profile.d/tool-aliases.sh` (bash) and
 `/etc/fish/conf.d/tool-aliases.fish` (fish) provide aliases and shell
-hooks for CLI tools regardless of origin (userbox exports or native
-installers): bat, eza, zoxide, starship, direnv, and mise. All entries
-are guarded (`command -v` in bash, `command -sq` in fish) and silently
-skipped when the tool is absent.
+hooks for CLI tools: bat, eza, zoxide, starship, direnv, and mise. The
+first five ship in this image (§spec:image-ships-shell-tools); mise
+arrives from `ujust setup-user`. All entries are guarded (`command -v`
+in bash, `command -sq` in fish) and silently skipped when the tool is
+absent.
 
 ### User-local bin directory in PATH §spec:user-local-bin-path
 
@@ -346,6 +347,12 @@ each login via a systemd user unit. No drift from the declaration.
 See [repentsinner/userbox](https://github.com/repentsinner/userbox) for
 the Containerfile and CI. This repo covers only the image-side changes.
 
+The move applies to tools carrying no image-side configuration. Tools
+that `tool-aliases.{sh,fish}` aliases or hooks stay in the image
+(§spec:image-ships-shell-tools); exporting those from the userbox broke
+the prompt and the direnv hook. The rebuild-churn argument holds for the
+remaining tier (§spec:image-excludes-user-tools).
+
 Three repos, three concerns:
 
 | Repo | Contains | Lifecycle |
@@ -373,13 +380,34 @@ layers of the same file, each more specific than the last:
 All shell aliases and hooks are guarded with `command -v`. A system
 with no userbox functions normally — it just lacks CLI tools.
 
-### Image does not contain user tools §spec:image-excludes-user-tools
+### Image ships shell-integration tools §spec:image-ships-shell-tools
 
-The image does not install `gh`, `chezmoi`, `direnv`, `zoxide`,
-`starship`, `eza`, `bat`, `bws`, or `antigravity`. No COPR repos, curl
-blocks, or package arrays exist for these tools in the build script.
-Native installer tools (Claude Code, uv) are also not in the image —
-they are installed per-user by `ujust setup-user`.
+The image installs `bat`, `eza`, `zoxide`, `direnv`, and `starship`,
+alongside `rbw` and `pinentry`. `starship` comes from the
+`atim/starship` COPR; the rest are Fedora packages.
+
+Rationale: `tool-aliases.sh` and `tool-aliases.fish` ship in this image
+and depend on these binaries. Sourcing the configuration from the image
+while the binaries arrive from a distrobox export splits one contract
+across two lifecycles, and the export wrappers break it outright. An
+exported wrapper runs the binary inside the container, so `starship`
+reads the container's own `/run/.containerenv` and prints a container
+marker in host shells, and `direnv hook` emits `/usr/bin/direnv` — a
+path the host does not have, raising an error at every prompt.
+Configuration and binary shall share a lifecycle.
+
+`rbw` joins them because `.envrc` files call it to export
+per-organization tokens; reachable only inside the userbox, it exports
+nothing in a host shell and does so silently. `pinentry` is named
+explicitly because the build installs with `install_weak_deps=False`.
+
+### Image excludes fast-moving user tools §spec:image-excludes-user-tools
+
+The image does not install `gh`, `chezmoi`, `bws`, or `antigravity`.
+Native installer tools (Claude Code, uv, mise) are also not in the
+image. `ujust setup-user` installs this tier per-user into
+`~/.local/bin` (§spec:ujust-setup-user), where a tool updates without an
+image rebuild.
 
 ### Shell aliases degrade gracefully §spec:aliases-degrade-gracefully
 
@@ -408,7 +436,7 @@ nvidia=true
 pull=true
 replace=true
 start_now=true
-exported_bins="/usr/bin/gh /usr/bin/chezmoi /usr/bin/direnv /usr/bin/zoxide /usr/bin/starship /usr/bin/eza /usr/bin/bws"
+exported_bins="/usr/bin/fvm"
 exported_bins_path="~/.local/bin"
 ```
 
@@ -416,9 +444,16 @@ exported_bins_path="~/.local/bin"
 open kernel modules and the container toolkit. The userbox inherits GPU
 access for tools that need it.
 
-Rationale: breaks the chezmoi↔userbox bootstrap cycle. Chezmoi lives
-inside the userbox, so it cannot seed its own `.ini`. The skel file
-provides a working default; chezmoi overwrites it once available.
+`fvm` is the only binary the host needs from the userbox: it drives a
+Flutter toolchain that lives in the container. The shell tools shall not
+appear here — `distrobox assemble` re-exports every entry, and the
+wrappers would shadow the image's own copies in `~/.local/bin`,
+restoring the failures described in §spec:image-ships-shell-tools.
+
+Rationale: the skel file provides a working default at account creation.
+The chezmoi↔userbox bootstrap cycle no longer arises, because chezmoi
+installs from `ujust setup-user` (§spec:ujust-setup-user) rather than
+from the userbox.
 
 ### ujust setup-user recipe §spec:ujust-setup-user
 

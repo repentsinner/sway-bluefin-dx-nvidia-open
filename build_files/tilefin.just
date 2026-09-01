@@ -40,10 +40,12 @@ setup-user image="":
     echo ""
 
     # Native CLI tools selection
-    NATIVE_TOOLS=$(gum choose --no-limit --selected="Claude Code,uv,mise" \
+    NATIVE_TOOLS=$(gum choose --no-limit --selected="Claude Code,uv,mise,gh,chezmoi" \
         "Claude Code" \
         "uv" \
-        "mise")
+        "mise" \
+        "gh" \
+        "chezmoi")
 
     # Flatpak apps selection
     FLATPAK_APPS=$(gum choose --no-limit --selected="Firefox,Bitwarden" \
@@ -74,6 +76,23 @@ setup-user image="":
         if echo "$NATIVE_TOOLS" | grep -q "mise"; then
             echo "  mise..."
             curl -fsSL https://mise.run | sh
+        fi
+        # gh and chezmoi live here rather than in the image: they carry no
+        # image-side shell configuration and update faster than the OS
+        # (§spec:image-excludes-user-tools). The match is anchored: an
+        # unanchored "gh" hits any selection containing those two letters.
+        if echo "$NATIVE_TOOLS" | grep -qx "gh"; then
+            echo "  gh..."
+            GH_VER=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest \
+                | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1)
+            curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" \
+                | tar xz -C /tmp
+            install -Dm755 "/tmp/gh_${GH_VER}_linux_amd64/bin/gh" "$HOME/.local/bin/gh"
+            rm -rf "/tmp/gh_${GH_VER}_linux_amd64"
+        fi
+        if echo "$NATIVE_TOOLS" | grep -qx "chezmoi"; then
+            echo "  chezmoi..."
+            sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
         fi
     fi
 
