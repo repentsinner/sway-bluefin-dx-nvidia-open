@@ -251,6 +251,29 @@ curl -Lo /tmp/niri-desaturate.rpm "https://github.com/repentsinner/niri-desatura
 dnf5 install -y --allowerasing /tmp/niri-desaturate.rpm
 rm -f /tmp/niri-desaturate.rpm
 
+# bws — Bitwarden Secrets Manager CLI (§spec:secrets-manager-cli)
+# Not packaged for Fedora, and not in any registry a resolver reaches, so it
+# comes from the upstream release. The musl build is statically linked, which
+# keeps it independent of the image's glibc.
+#
+# The checksum is verified rather than trusted. This is the binary that reads
+# infrastructure credentials; a silently substituted one reads them too.
+BWS_VERSION="2.1.0"
+BWS_BASE="https://github.com/bitwarden/sdk-sm/releases/download/bws-v${BWS_VERSION}"
+BWS_ZIP="bws-x86_64-unknown-linux-musl-${BWS_VERSION}.zip"
+echo "Installing bws ${BWS_VERSION}..."
+curl -fsSLo "/tmp/${BWS_ZIP}" "${BWS_BASE}/${BWS_ZIP}"
+curl -fsSLo /tmp/bws-checksums.txt "${BWS_BASE}/bws-sha256-checksums-${BWS_VERSION}.txt"
+bws_want="$(grep "${BWS_ZIP}" /tmp/bws-checksums.txt | awk '{print $1}')"
+bws_got="$(sha256sum "/tmp/${BWS_ZIP}" | awk '{print $1}')"
+if [ -z "$bws_want" ] || [ "$bws_want" != "$bws_got" ]; then
+    echo "bws checksum mismatch: expected '${bws_want}', got '${bws_got}'" >&2
+    exit 1
+fi
+unzip -q -o "/tmp/${BWS_ZIP}" -d /tmp
+install -Dm755 /tmp/bws /usr/bin/bws
+rm -f "/tmp/${BWS_ZIP}" /tmp/bws-checksums.txt /tmp/bws
+
 ###############################################################################
 # Configure Display Manager (greetd)
 # Note: greetd package provides /usr/lib/sysusers.d/greetd.conf (creates greetd user)

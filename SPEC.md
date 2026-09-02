@@ -1930,6 +1930,30 @@ the waybar update module text reads `hot-development · <age>` and the
 tooltip includes a `Mode: hot-development` line. When both flags exist,
 the module reads `production` (§spec:waybar-production-indicator).
 
+## Secrets Manager CLI §spec:secrets-manager-cli
+
+*Status: complete*
+
+The image installs `bws`, the Bitwarden Secrets Manager client, from the
+upstream release at a pinned version with its published SHA-256 verified
+during the build.
+
+Rationale: `bws` and `rbw` read different stores for different readers.
+`rbw` reads the human vault, unlocks through pinentry, and serves a
+person at a terminal — which is why `.envrc` files call it to export a
+per-organization token (§spec:image-ships-shell-tools). `bws` reads
+Secrets Manager through a machine account, without a prompt, and is the
+path for infrastructure credentials that no person types. A tool
+intended for unattended use belongs where unattended things reach it.
+
+The checksum is verified rather than assumed. This binary reads
+infrastructure credentials, so a substituted one reads them too, and the
+release publishes a checksum file that makes the check cost nothing.
+`bws` is absent from Fedora and from the registries a resolver reaches
+(§spec:k8s-clients), so the upstream archive is the only source; the
+musl build is statically linked and carries no dependency on the image's
+glibc.
+
 ## Encrypted credential storage (Secret Service) §spec:credential-storage
 
 *Status: in progress*
