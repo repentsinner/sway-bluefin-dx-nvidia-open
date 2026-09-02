@@ -401,6 +401,19 @@ per-organization tokens; reachable only inside the userbox, it exports
 nothing in a host shell and does so silently. `pinentry` is named
 explicitly because the build installs with `install_weak_deps=False`.
 
+### Runtime libraries for vendored binaries §spec:host-runtime-libs
+
+The image installs `libatomic`. Tools that ship their own prebuilt
+binaries link against it: `pyright` downloads a Node runtime that dies
+with `error while loading shared libraries: libatomic.so.1`, so
+`uv run pyright` cannot run on the host without it. It is the only
+missing dependency of that runtime, and 37 KB installed.
+
+Rationale: a Python project managed by `uv` needs nothing else from the
+system to typecheck. Absent this library the host looks incapable of
+running the project's own toolchain, which argues for moving development
+into a container that has it — a large answer to a small gap.
+
 ### Image excludes fast-moving user tools §spec:image-excludes-user-tools
 
 The image does not install `gh`, `chezmoi`, `bws`, or `antigravity`.
@@ -482,8 +495,10 @@ user's development environment in one step:
 The recipe presents three interactive gum menus (all items selected by
 default, user deselects with space):
 
-1. **Native CLI tools** — Claude Code, uv, mise. Installed to
-   `~/.local/bin` via vendor curl installers. All idempotent.
+1. **Native CLI tools** — Claude Code, uv, mise, gh, chezmoi, and the
+   lint gates (shellcheck, vale, rumdl). Installed to `~/.local/bin`
+   via vendor curl installers, upstream release binaries, or `uv tool
+   install`. All idempotent.
 2. **Flatpak apps** — Firefox, Bitwarden (selected by default); Slack,
    Discord, Signal, Proton VPN (available, unselected). Installed as
    user Flatpaks (`--user`), which persist in `~/.local/share/flatpak`
@@ -498,6 +513,25 @@ images or overriding the skel default without chezmoi.
 The recipe is idempotent. Running it again updates native tools,
 skips already-installed Flatpaks, and reassembles the userbox with
 `--replace`.
+
+### Lint gates reachable on PATH §spec:lint-gates-on-path
+
+`setup-user` installs `shellcheck` into `~/.local/bin`.
+
+Rationale: project `ci.sh` scripts and the governance skills guard these
+tools with `command -v` so a machine without them still runs. The guard
+skips silently, so a local run reports success where the remote gate
+would fail. Installing them makes a local check mean what it appears to
+mean.
+
+Neither `vale` nor a markdown linter is installed. The governance
+contract pins both and resolves them itself — `vale` through `mise`,
+which fronts aqua's registry of errata-ai's own release archives, and
+the markdown linter through `uvx`. A copy installed here is a second
+version to drift from that pin rather than a convenience.
+
+`shellcheck` has no such resolver: the `ci.sh` scripts that call it are
+project-owned, name it directly, and pin nothing.
 
 ### Systemd user unit for auto-assembly (chezmoi) §spec:userbox-auto-assembly
 

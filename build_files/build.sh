@@ -87,6 +87,7 @@ SYSTEM_UTILS=(
     xdg-user-dirs             # Creates ~/Downloads etc. so Flatpak xdg-* grants resolve (§spec:xdg-user-dirs)
     dbus-tools                # dbus-update-activation-environment, needed by the session wrapper (§spec:session-targets)
     linuxptp                  # ptp4l/phc2sys — PTP clock sync for ST2110 (§spec:ptp)
+    libatomic                 # GCC runtime for vendored binaries (§spec:host-runtime-libs)
 )
 
 SYSTEM_THEMING=(

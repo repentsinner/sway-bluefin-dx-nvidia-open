@@ -40,12 +40,13 @@ setup-user image="":
     echo ""
 
     # Native CLI tools selection
-    NATIVE_TOOLS=$(gum choose --no-limit --selected="Claude Code,uv,mise,gh,chezmoi" \
+    NATIVE_TOOLS=$(gum choose --no-limit --selected="Claude Code,uv,mise,gh,chezmoi,lint gates" \
         "Claude Code" \
         "uv" \
         "mise" \
         "gh" \
-        "chezmoi")
+        "chezmoi" \
+        "lint gates")
 
     # Flatpak apps selection
     FLATPAK_APPS=$(gum choose --no-limit --selected="Firefox,Bitwarden" \
@@ -93,6 +94,24 @@ setup-user image="":
         if echo "$NATIVE_TOOLS" | grep -qx "chezmoi"; then
             echo "  chezmoi..."
             sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+        fi
+        # shellcheck only. Project ci.sh scripts call it by name and guard it
+        # with `command -v`, so an absent copy is skipped in silence and a
+        # local run reports a success the remote gate would not
+        # (§spec:lint-gates-on-path). Nothing resolves it on demand for them.
+        #
+        # vale and the markdown linter are deliberately absent: the governance
+        # contract pins both and resolves them itself, through mise and uvx. A
+        # copy installed here is a second version to drift from that pin, not
+        # a convenience.
+        if echo "$NATIVE_TOOLS" | grep -qx "lint gates"; then
+            echo "  lint gates (shellcheck)..."
+            # Upstream release binary; the PyPI repackage is third-party.
+            SC_URL=$(curl -fsSL https://api.github.com/repos/koalaman/shellcheck/releases/latest \
+                | grep -oE 'https://[^"]*linux\.x86_64\.tar\.xz' | head -1)
+            curl -fsSL "$SC_URL" | tar xJ -C /tmp
+            install -Dm755 /tmp/shellcheck-*/shellcheck "$HOME/.local/bin/shellcheck"
+            rm -rf /tmp/shellcheck-*
         fi
     fi
 
