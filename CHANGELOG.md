@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.7.0...v0.8.0) (2026-09-02)
+
+
+### Features
+
+* add a compose provider and the Kubernetes clients ([#90](https://github.com/repentsinner/tilefin-nvidia-open/issues/90)) ([e2db41d](https://github.com/repentsinner/tilefin-nvidia-open/commit/e2db41d2a1cfedb770d881c933ed28b1cf61fea9))
+
 # [0.7.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.6.0...v0.7.0) (2026-09-02)
 
 
