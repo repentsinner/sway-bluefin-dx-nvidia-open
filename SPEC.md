@@ -495,10 +495,10 @@ user's development environment in one step:
 The recipe presents three interactive gum menus (all items selected by
 default, user deselects with space):
 
-1. **Native CLI tools** — Claude Code, uv, mise, gh, chezmoi, and the
-   lint gates (shellcheck, vale, rumdl). Installed to `~/.local/bin`
-   via vendor curl installers, upstream release binaries, or `uv tool
-   install`. All idempotent.
+1. **Native CLI tools** — Claude Code, uv, mise, gh, chezmoi, the lint
+   gate (shellcheck), and the Kubernetes clients. Installed to
+   `~/.local/bin` via vendor curl installers, upstream release
+   binaries, or `mise use -g`. All idempotent.
 2. **Flatpak apps** — Firefox, Bitwarden (selected by default); Slack,
    Discord, Signal, Proton VPN (available, unselected). Installed as
    user Flatpaks (`--user`), which persist in `~/.local/share/flatpak`
@@ -513,6 +513,35 @@ images or overriding the skel default without chezmoi.
 The recipe is idempotent. Running it again updates native tools,
 skips already-installed Flatpaks, and reassembles the userbox with
 `--replace`.
+
+### Compose provider §spec:compose-provider
+
+The image installs `docker-compose`.
+
+Rationale: `podman compose` is a shim that execs an external provider. The
+image ships podman but shipped no provider, so every compose command failed
+with `looking up compose provider failed`. A host capability the image
+already claims half of belongs in the image, not in a per-user install.
+`docker-compose` over `podman-compose` because podman prefers it and it
+implements Compose semantics more faithfully — `stop <service>` stops every
+replica, where `podman-compose` stops one.
+
+### Kubernetes clients §spec:k8s-clients
+
+`setup-user` installs `kubectl`, `talosctl`, `helm`, `kubeseal`, `mc` and
+`kind` through `mise use -g`, at loose versions.
+
+Rationale: these are leaf binaries. No configuration in this image refers to
+them, so they carry none of the coupling that keeps the shell tier in the
+image (§spec:image-ships-shell-tools), and baking them in would mean an image
+rebuild and a reboot to update a command-line client.
+
+The versions are loose deliberately. `kubectl` is supported within one minor
+version of the API server and patch versions do not affect compatibility, so
+a single set of clients serves every cluster reached from this host — which
+is the point of the skew policy, and the reason a per-repository pin would
+solve a problem Kubernetes does not have. `helm` is held at `3.21` only
+because a bare `3` resolves to a release candidate.
 
 ### Lint gates reachable on PATH §spec:lint-gates-on-path
 
