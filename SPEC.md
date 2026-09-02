@@ -516,8 +516,7 @@ skips already-installed Flatpaks, and reassembles the userbox with
 
 ### Lint gates reachable on PATH §spec:lint-gates-on-path
 
-`setup-user` installs `shellcheck`, `vale` and `rumdl` into
-`~/.local/bin`.
+`setup-user` installs `shellcheck` and `vale` into `~/.local/bin`.
 
 Rationale: project `ci.sh` scripts and the governance skills guard these
 tools with `command -v` so a machine without them still runs. The guard
@@ -525,12 +524,15 @@ skips silently, so a local run reports success where the remote gate
 would fail. Installing them makes a local check mean what it appears to
 mean.
 
-`rumdl` stands in for `markdownlint-cli2`, which requires Node. It reads
-`.markdownlint.json` and `.markdownlint-cli2.jsonc` directly and
-implements the same rule identifiers, but it is not bug-for-bug
-identical: line-length and list-indentation behaviour differ. Where a
-remote gate runs `markdownlint-cli2`, compare both before trusting the
-local result.
+No markdown linter is installed. The governance contract pins one and
+resolves it through `uvx`, so a copy installed here would be a second
+version to drift from the pin rather than a convenience.
+
+`vale` is installed because nothing resolves it on demand: no registry
+ships it, and the PyPI package is a third-party repackage. The version
+here tracks upstream while a consuming project's CI may pin an older
+one, so the two can disagree; the contract script reports the version it
+ran for that reason.
 
 ### Systemd user unit for auto-assembly (chezmoi) §spec:userbox-auto-assembly
 

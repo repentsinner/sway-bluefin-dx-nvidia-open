@@ -100,7 +100,7 @@ setup-user image="":
         # a local run reports success the remote gate would not
         # (§spec:lint-gates-on-path).
         if echo "$NATIVE_TOOLS" | grep -qx "lint gates"; then
-            echo "  lint gates (shellcheck, vale, rumdl)..."
+            echo "  lint gates (shellcheck, vale)..."
             # Upstream release binaries. The PyPI repackages of shellcheck and
             # vale are third-party; upstream is one trust hop fewer.
             SC_URL=$(curl -fsSL https://api.github.com/repos/koalaman/shellcheck/releases/latest \
@@ -113,9 +113,9 @@ setup-user image="":
             curl -fsSL "$VALE_URL" | tar xz -C /tmp vale
             install -Dm755 /tmp/vale "$HOME/.local/bin/vale"
             rm -f /tmp/vale
-            # rumdl reads markdownlint and markdownlint-cli2 config files and
-            # needs no Node. PyPI is its upstream distribution channel.
-            "$HOME/.local/bin/uv" tool install rumdl
+            # No markdown linter here on purpose: the governance contract pins
+            # one and resolves it through uvx, so a copy installed per-machine
+            # would only be a second version to drift.
         fi
     fi
 
