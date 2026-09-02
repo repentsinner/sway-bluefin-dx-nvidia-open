@@ -329,14 +329,19 @@ shells.
 
 ## Userbox — move user tools to distrobox §spec:userbox
 
-*Status: in progress*
+*Status: complete*
 
 ### Problem
 
-The image bakes in 7 CLI tools and 1 GUI app with no session-startup
-dependencies: `gh`, `chezmoi`, `direnv`, `zoxide`, `starship`, `eza`,
-`bws`, `antigravity`. Including them causes image rebuilds for tool
-updates and blurs the boundary between OS and personal environment.
+The image baked in 8 user tools with no session-startup dependencies:
+`gh`, `chezmoi`, `direnv`, `zoxide`, `starship`, `eza`, `bws`,
+`antigravity`. Including them caused image rebuilds for tool updates and
+blurred the boundary between OS and personal environment.
+
+The move turned out to apply to only part of that set, which is what the
+Design below records: a tool the image's own shell configuration depends
+on cannot leave the image without breaking the configuration that stayed
+behind.
 
 ### Design
 
