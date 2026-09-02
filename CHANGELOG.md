@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.6.0...v0.7.0) (2026-09-02)
+
+
+### Features
+
+* add libatomic and the lint gates to the host ([#89](https://github.com/repentsinner/tilefin-nvidia-open/issues/89)) ([01f94f3](https://github.com/repentsinner/tilefin-nvidia-open/commit/01f94f35226def08949d95ab4977c1a007fc35ed)), closes [#88](https://github.com/repentsinner/tilefin-nvidia-open/issues/88)
+
 # [0.6.0](https://github.com/repentsinner/tilefin-nvidia-open/compare/v0.5.0...v0.6.0) (2026-09-01)
 
 
