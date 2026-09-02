@@ -40,12 +40,13 @@ setup-user image="":
     echo ""
 
     # Native CLI tools selection
-    NATIVE_TOOLS=$(gum choose --no-limit --selected="Claude Code,uv,mise,gh,chezmoi" \
+    NATIVE_TOOLS=$(gum choose --no-limit --selected="Claude Code,uv,mise,gh,chezmoi,lint gates" \
         "Claude Code" \
         "uv" \
         "mise" \
         "gh" \
-        "chezmoi")
+        "chezmoi" \
+        "lint gates")
 
     # Flatpak apps selection
     FLATPAK_APPS=$(gum choose --no-limit --selected="Firefox,Bitwarden" \
@@ -93,6 +94,28 @@ setup-user image="":
         if echo "$NATIVE_TOOLS" | grep -qx "chezmoi"; then
             echo "  chezmoi..."
             sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+        fi
+        # Lint gates. Project ci.sh scripts and the symphonize skills guard
+        # these with `command -v`, so an absent tool is skipped in silence and
+        # a local run reports success the remote gate would not
+        # (§spec:lint-gates-on-path).
+        if echo "$NATIVE_TOOLS" | grep -qx "lint gates"; then
+            echo "  lint gates (shellcheck, vale, rumdl)..."
+            # Upstream release binaries. The PyPI repackages of shellcheck and
+            # vale are third-party; upstream is one trust hop fewer.
+            SC_URL=$(curl -fsSL https://api.github.com/repos/koalaman/shellcheck/releases/latest \
+                | grep -oE 'https://[^"]*linux\.x86_64\.tar\.xz' | head -1)
+            curl -fsSL "$SC_URL" | tar xJ -C /tmp
+            install -Dm755 /tmp/shellcheck-*/shellcheck "$HOME/.local/bin/shellcheck"
+            rm -rf /tmp/shellcheck-*
+            VALE_URL=$(curl -fsSL https://api.github.com/repos/errata-ai/vale/releases/latest \
+                | grep -oE 'https://[^"]*Linux_64-bit\.tar\.gz' | head -1)
+            curl -fsSL "$VALE_URL" | tar xz -C /tmp vale
+            install -Dm755 /tmp/vale "$HOME/.local/bin/vale"
+            rm -f /tmp/vale
+            # rumdl reads markdownlint and markdownlint-cli2 config files and
+            # needs no Node. PyPI is its upstream distribution channel.
+            "$HOME/.local/bin/uv" tool install rumdl
         fi
     fi
 
