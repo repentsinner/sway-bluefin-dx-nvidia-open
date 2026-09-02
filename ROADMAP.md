@@ -207,8 +207,9 @@ Files: `build_files/build.sh`, new `kind-provider.conf`,
 new sysctl `.conf`.
 §spec:rootless-k8s-enabling
 
-**Verify:** With the K8s tools installed from userbox, `kind create
-cluster` succeeds rootless on podman and `kubectl get nodes` reports
-Ready. `podman compose up` resolves the docker-compose provider from
-`~/.local/bin`. `printenv KIND_EXPERIMENTAL_PROVIDER` reads `podman` in
-a fresh shell.
+**Verify:** With the Kubernetes clients installed by `setup-user`
+(§spec:k8s-clients), `kind create cluster` succeeds rootless on podman
+and `kubectl get nodes` reports Ready. `printenv
+KIND_EXPERIMENTAL_PROVIDER` reads `podman` in a fresh shell. The compose
+provider is no longer part of this workstream — it ships in the image
+(§spec:compose-provider).
