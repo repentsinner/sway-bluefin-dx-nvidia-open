@@ -46,7 +46,8 @@ setup-user image="":
         "mise" \
         "gh" \
         "chezmoi" \
-        "lint gates")
+        "lint gates" \
+        "kubernetes")
 
     # Flatpak apps selection
     FLATPAK_APPS=$(gum choose --no-limit --selected="Firefox,Bitwarden" \
@@ -112,6 +113,22 @@ setup-user image="":
             curl -fsSL "$SC_URL" | tar xJ -C /tmp
             install -Dm755 /tmp/shellcheck-*/shellcheck "$HOME/.local/bin/shellcheck"
             rm -rf /tmp/shellcheck-*
+        fi
+        # Kubernetes clients, through mise so the set is declared in one place
+        # and updates without an image rebuild. Versions are deliberately
+        # loose: kubectl is supported within one minor of the API server and
+        # patch versions do not affect compatibility, so one set of clients
+        # serves every cluster we reach (§spec:k8s-clients). helm is held at
+        # 3.21 because a bare "3" resolves to a release candidate.
+        if echo "$NATIVE_TOOLS" | grep -qx "kubernetes"; then
+            echo "  kubernetes clients..."
+            "$HOME/.local/bin/mise" use -g --yes \
+                kubectl@latest \
+                talosctl@latest \
+                helm@3.21 \
+                kubeseal@latest \
+                mc@latest \
+                kind@latest
         fi
     fi
 

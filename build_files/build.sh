@@ -88,6 +88,7 @@ SYSTEM_UTILS=(
     dbus-tools                # dbus-update-activation-environment, needed by the session wrapper (§spec:session-targets)
     linuxptp                  # ptp4l/phc2sys — PTP clock sync for ST2110 (§spec:ptp)
     libatomic                 # GCC runtime for vendored binaries (§spec:host-runtime-libs)
+    docker-compose            # `podman compose` provider (§spec:compose-provider)
 )
 
 SYSTEM_THEMING=(
