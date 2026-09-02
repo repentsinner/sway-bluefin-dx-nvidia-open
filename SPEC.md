@@ -516,7 +516,7 @@ skips already-installed Flatpaks, and reassembles the userbox with
 
 ### Lint gates reachable on PATH §spec:lint-gates-on-path
 
-`setup-user` installs `shellcheck` and `vale` into `~/.local/bin`.
+`setup-user` installs `shellcheck` into `~/.local/bin`.
 
 Rationale: project `ci.sh` scripts and the governance skills guard these
 tools with `command -v` so a machine without them still runs. The guard
@@ -524,15 +524,14 @@ skips silently, so a local run reports success where the remote gate
 would fail. Installing them makes a local check mean what it appears to
 mean.
 
-No markdown linter is installed. The governance contract pins one and
-resolves it through `uvx`, so a copy installed here would be a second
-version to drift from the pin rather than a convenience.
+Neither `vale` nor a markdown linter is installed. The governance
+contract pins both and resolves them itself — `vale` through `mise`,
+which fronts aqua's registry of errata-ai's own release archives, and
+the markdown linter through `uvx`. A copy installed here is a second
+version to drift from that pin rather than a convenience.
 
-`vale` is installed because nothing resolves it on demand: no registry
-ships it, and the PyPI package is a third-party repackage. The version
-here tracks upstream while a consuming project's CI may pin an older
-one, so the two can disagree; the contract script reports the version it
-ran for that reason.
+`shellcheck` has no such resolver: the `ci.sh` scripts that call it are
+project-owned, name it directly, and pin nothing.
 
 ### Systemd user unit for auto-assembly (chezmoi) §spec:userbox-auto-assembly
 

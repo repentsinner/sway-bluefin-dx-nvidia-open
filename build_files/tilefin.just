@@ -95,27 +95,23 @@ setup-user image="":
             echo "  chezmoi..."
             sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
         fi
-        # Lint gates. Project ci.sh scripts and the symphonize skills guard
-        # these with `command -v`, so an absent tool is skipped in silence and
-        # a local run reports success the remote gate would not
-        # (§spec:lint-gates-on-path).
+        # shellcheck only. Project ci.sh scripts call it by name and guard it
+        # with `command -v`, so an absent copy is skipped in silence and a
+        # local run reports a success the remote gate would not
+        # (§spec:lint-gates-on-path). Nothing resolves it on demand for them.
+        #
+        # vale and the markdown linter are deliberately absent: the governance
+        # contract pins both and resolves them itself, through mise and uvx. A
+        # copy installed here is a second version to drift from that pin, not
+        # a convenience.
         if echo "$NATIVE_TOOLS" | grep -qx "lint gates"; then
-            echo "  lint gates (shellcheck, vale)..."
-            # Upstream release binaries. The PyPI repackages of shellcheck and
-            # vale are third-party; upstream is one trust hop fewer.
+            echo "  lint gates (shellcheck)..."
+            # Upstream release binary; the PyPI repackage is third-party.
             SC_URL=$(curl -fsSL https://api.github.com/repos/koalaman/shellcheck/releases/latest \
                 | grep -oE 'https://[^"]*linux\.x86_64\.tar\.xz' | head -1)
             curl -fsSL "$SC_URL" | tar xJ -C /tmp
             install -Dm755 /tmp/shellcheck-*/shellcheck "$HOME/.local/bin/shellcheck"
             rm -rf /tmp/shellcheck-*
-            VALE_URL=$(curl -fsSL https://api.github.com/repos/errata-ai/vale/releases/latest \
-                | grep -oE 'https://[^"]*Linux_64-bit\.tar\.gz' | head -1)
-            curl -fsSL "$VALE_URL" | tar xz -C /tmp vale
-            install -Dm755 /tmp/vale "$HOME/.local/bin/vale"
-            rm -f /tmp/vale
-            # No markdown linter here on purpose: the governance contract pins
-            # one and resolves it through uvx, so a copy installed per-machine
-            # would only be a second version to drift.
         fi
     fi
 
